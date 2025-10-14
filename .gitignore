@@ -1,0 +1,34 @@
+# Environment configuration
+.env
+CLAUDE.md
+
+# Database
+data/*.db
+data/*.db-journal
+
+# Logs
+logs/*.log
+logs/*.txt
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment (if created)
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+.claude
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

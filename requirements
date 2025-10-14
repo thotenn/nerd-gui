@@ -1,0 +1,14 @@
+# Dictation Manager Requirements
+# Python 3.8+
+
+# Tkinter viene incluido con Python en Ubuntu, pero por si acaso:
+# sudo apt install python3-tk
+
+# No necesitamos dependencias externas adicionales porque:
+# - tkinter viene con Python
+# - sqlite3 viene con Python
+# - subprocess, pathlib, datetime son módulos estándar
+
+# Si en el futuro quieres agregar más funcionalidades:
+# pillow>=10.0.0  # Para iconos e imágenes
+# psutil>=5.9.0   # Para mejor monitoreo de procesos
