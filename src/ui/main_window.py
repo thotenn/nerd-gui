@@ -196,19 +196,38 @@ class MainWindow:
     
     def _on_language_clicked(self, language):
         """Handle language button click"""
-        # Get last used model for this language
-        last_model = self.database.get_last_used_model(language)
+        import logging
+        logger = logging.getLogger(__name__)
 
-        if last_model:
-            # Use last model
-            self.controller.restart(language, last_model["path"])
+        # Get language code (en, es, etc.)
+        lang_code = self.config.languages.get(language, {}).get("code", language)
+        logger.info(f"Language button clicked: {language} (code: {lang_code})")
+
+        # Check if using Whisper backend
+        if self.config.backend == "whisper":
+            # Whisper doesn't need model_path, just language code
+            logger.info(f"Starting Whisper backend with language '{lang_code}'")
+            success, message = self.controller.start(lang_code, None)
+            logger.info(f"Start result: success={success}, message={message}")
         else:
-            # Find first available model for this language
-            models = self.config.get_available_models()
-            matching_models = [m for m in models if m["language"] == language]
+            # Vosk backend - needs model path
+            # Get last used model for this language
+            last_model = self.database.get_last_used_model(language)
 
-            if matching_models:
-                self.controller.restart(language, matching_models[0]["path"])
+            if last_model:
+                # Use last model
+                logger.info(f"Starting with last used model: {last_model['path']}")
+                self.controller.restart(lang_code, last_model["path"])
+            else:
+                # Find first available model for this language
+                models = self.config.get_available_models()
+                matching_models = [m for m in models if m["language"] == language]
+
+                if matching_models:
+                    logger.info(f"Starting with first matching model: {matching_models[0]['path']}")
+                    self.controller.restart(lang_code, matching_models[0]["path"])
+                else:
+                    logger.warning(f"No models found for language: {language}")
 
         self._update_status()
     

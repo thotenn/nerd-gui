@@ -21,10 +21,25 @@ class Config:
 
         # Database
         self.db_path = self.app_dir / "data" / "dictation.db"
-        
+
         # Nerd-dictation executable
         self.nerd_dictation_bin = self.nerd_dictation_dir / "nerd-dictation"
-        
+
+        # Backend configuration
+        self.backend = env_vars.get("BACKEND", "vosk")  # 'vosk' or 'whisper'
+
+        # Whisper configuration
+        self.whisper_model = env_vars.get("WHISPER_MODEL", "medium")  # tiny, base, small, medium, large
+        self.whisper_device = env_vars.get("WHISPER_DEVICE", "cuda")  # cuda or cpu
+        self.whisper_compute_type = env_vars.get("WHISPER_COMPUTE_TYPE", "float16")  # float16 for GPU, float32 for CPU
+
+        # Whisper Audio/VAD configuration
+        device_index_str = env_vars.get("WHISPER_DEVICE_INDEX", "")
+        self.whisper_device_index = int(device_index_str) if device_index_str.strip() else None
+        self.whisper_silence_duration = float(env_vars.get("WHISPER_SILENCE_DURATION", "1.0"))
+        self.whisper_energy_threshold = float(env_vars.get("WHISPER_ENERGY_THRESHOLD", "0.002"))
+        self.whisper_min_audio_length = float(env_vars.get("WHISPER_MIN_AUDIO_LENGTH", "0.3"))
+
         # Language configurations
         self.languages = {
             "spanish": {

@@ -30,6 +30,8 @@ class Database:
                 language TEXT NOT NULL,
                 model_path TEXT NOT NULL,
                 model_name TEXT NOT NULL,
+                backend TEXT NOT NULL DEFAULT 'vosk',
+                whisper_model TEXT,
                 started_at TEXT NOT NULL,
                 stopped_at TEXT,
                 status TEXT NOT NULL DEFAULT 'running'
@@ -44,32 +46,55 @@ class Database:
                 updated_at TEXT NOT NULL
             )
         """)
-        
+
+        # Migrate database schema if needed
+        self._migrate_schema(cursor)
+
         conn.commit()
         conn.close()
+
+    def _migrate_schema(self, cursor):
+        """Migrate database schema to latest version"""
+        try:
+            # Check if backend column exists
+            cursor.execute("PRAGMA table_info(sessions)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if 'backend' not in columns:
+                # Add backend column
+                cursor.execute("ALTER TABLE sessions ADD COLUMN backend TEXT DEFAULT 'vosk'")
+                print("Added 'backend' column to sessions table")
+
+            if 'whisper_model' not in columns:
+                # Add whisper_model column
+                cursor.execute("ALTER TABLE sessions ADD COLUMN whisper_model TEXT")
+                print("Added 'whisper_model' column to sessions table")
+
+        except Exception as e:
+            print(f"Database migration warning: {e}")
     
-    def start_session(self, language, model_path, model_name):
+    def start_session(self, language, model_path, model_name, backend='vosk', whisper_model=None):
         """Record a new dictation session start"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         # Stop any running sessions first
         cursor.execute("""
-            UPDATE sessions 
+            UPDATE sessions
             SET status = 'stopped', stopped_at = ?
             WHERE status = 'running'
         """, (datetime.now().isoformat(),))
-        
+
         # Insert new session
         cursor.execute("""
-            INSERT INTO sessions (language, model_path, model_name, started_at, status)
-            VALUES (?, ?, ?, ?, 'running')
-        """, (language, model_path, model_name, datetime.now().isoformat()))
-        
+            INSERT INTO sessions (language, model_path, model_name, backend, whisper_model, started_at, status)
+            VALUES (?, ?, ?, ?, ?, ?, 'running')
+        """, (language, model_path, model_name, backend, whisper_model, datetime.now().isoformat()))
+
         session_id = cursor.lastrowid
         conn.commit()
         conn.close()
-        
+
         return session_id
     
     def stop_session(self):
@@ -92,23 +117,25 @@ class Database:
         cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT id, language, model_path, model_name, started_at
+            SELECT id, language, model_path, model_name, backend, whisper_model, started_at
             FROM sessions
             WHERE status = 'running'
             ORDER BY started_at DESC
             LIMIT 1
         """)
-        
+
         result = cursor.fetchone()
         conn.close()
-        
+
         if result:
             return {
                 "id": result[0],
                 "language": result[1],
                 "model_path": result[2],
                 "model_name": result[3],
-                "started_at": result[4]
+                "backend": result[4],
+                "whisper_model": result[5],
+                "started_at": result[6]
             }
         return None
     
@@ -138,23 +165,25 @@ class Database:
         cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT id, language, model_name, started_at, stopped_at, status
+            SELECT id, language, model_name, backend, whisper_model, started_at, stopped_at, status
             FROM sessions
             ORDER BY started_at DESC
             LIMIT ?
         """, (limit,))
-        
+
         results = cursor.fetchall()
         conn.close()
-        
+
         return [
             {
                 "id": r[0],
                 "language": r[1],
                 "model_name": r[2],
-                "started_at": r[3],
-                "stopped_at": r[4],
-                "status": r[5]
+                "backend": r[3],
+                "whisper_model": r[4],
+                "started_at": r[5],
+                "stopped_at": r[6],
+                "status": r[7]
             }
             for r in results
         ]
