@@ -3,7 +3,7 @@ Main window UI for Dictation Manager
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
 from pathlib import Path
 import sys
 
@@ -191,64 +191,44 @@ class MainWindow:
     
     def _on_stop_clicked(self):
         """Handle stop button click"""
-        success, message = self.controller.stop()
-        
-        if success:
-            messagebox.showinfo("Éxito", message)
-        else:
-            messagebox.showerror("Error", message)
-        
+        self.controller.stop()
         self._update_status()
     
     def _on_language_clicked(self, language):
         """Handle language button click"""
         # Get last used model for this language
         last_model = self.database.get_last_used_model(language)
-        
+
         if last_model:
             # Use last model
-            success, message = self.controller.restart(language, last_model["path"])
+            self.controller.restart(language, last_model["path"])
         else:
             # Find first available model for this language
             models = self.config.get_available_models()
             matching_models = [m for m in models if m["language"] == language]
-            
+
             if matching_models:
-                success, message = self.controller.restart(language, matching_models[0]["path"])
-            else:
-                success = False
-                message = f"No se encontró ningún modelo para {language}"
-        
-        if success:
-            messagebox.showinfo("Éxito", message)
-        else:
-            messagebox.showerror("Error", message)
-        
+                self.controller.restart(language, matching_models[0]["path"])
+
         self._update_status()
     
-    def _on_model_double_click(self, event):
+    def _on_model_double_click(self, _event):
         """Handle double-click on model"""
         selection = self.model_tree.selection()
         if not selection:
             return
-        
+
         item = selection[0]
         tags = self.model_tree.item(item, "tags")
-        
+
         if len(tags) < 2:
             return
-        
+
         model_path = tags[0]
         language = tags[1]
-        
+
         # Start dictation with selected model
-        success, message = self.controller.restart(language, model_path)
-        
-        if success:
-            messagebox.showinfo("Éxito", message)
-        else:
-            messagebox.showerror("Error", message)
-        
+        self.controller.restart(language, model_path)
         self._update_status()
     
     def _update_status(self):
