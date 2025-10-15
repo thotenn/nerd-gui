@@ -864,10 +864,9 @@ class MainWindow:
             self.status_label.config(text="🟢 Activo", foreground="green")
             self.model_label.config(text=status["model_name"])
 
-            lang_name = self.config.languages.get(
-                status["language"],
-                {"name": "Desconocido"}
-            )["name"]
+            # Get language display name using the helper method
+            lang_code = status["language"]
+            lang_name = self.config.get_language_name(lang_code)
             self.language_label.config(text=lang_name)
         else:
             self.status_label.config(text="🔴 Detenido", foreground="red")

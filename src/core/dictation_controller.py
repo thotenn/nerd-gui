@@ -216,7 +216,21 @@ class DictationController:
             if success:
                 # Record in database
                 backend_name = self.current_backend.name.lower()
-                model_name = Path(model_path).name if model_path else self.backend_type
+
+                # Get proper model name
+                if model_path:
+                    # Vosk: use the model directory name
+                    model_name = Path(model_path).name
+                elif backend_name == "whisper":
+                    # Whisper: use the specific model size
+                    if hasattr(self.current_backend, 'model_size'):
+                        model_name = f"whisper-{self.current_backend.model_size}"
+                    else:
+                        # Fallback: extract from config
+                        model_name = self.config.whisper_model.split('/')[-1]
+                else:
+                    # Fallback
+                    model_name = self.backend_type
 
                 self.database.start_session(
                     language=language,
@@ -304,6 +318,11 @@ class DictationController:
 
         # Get backend-specific status
         if self.current_backend:
+            # Add specific model info for Whisper
+            if self.backend_type == "whisper" and hasattr(self.current_backend, 'model_size'):
+                if not status.get("model_name") or status["model_name"] == "whisper":
+                    status["model_name"] = f"whisper-{self.current_backend.model_size}"
+
             if hasattr(self.current_backend, 'get_status_info'):
                 backend_info = self.current_backend.get_status_info()
                 status.update(backend_info)

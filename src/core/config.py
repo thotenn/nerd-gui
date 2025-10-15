@@ -117,6 +117,42 @@ class Config:
             return "english"
         return "unknown"
 
+    def get_language_by_code(self, code):
+        """
+        Get language key from language code.
+
+        Args:
+            code: Language code (e.g., 'es', 'en')
+
+        Returns:
+            Language key (e.g., 'spanish', 'english') or None if not found
+        """
+        for key, lang_info in self.languages.items():
+            if lang_info.get("code") == code:
+                return key
+        return None
+
+    def get_language_name(self, code_or_key):
+        """
+        Get language display name from code or key.
+
+        Args:
+            code_or_key: Language code ('es', 'en') or key ('spanish', 'english')
+
+        Returns:
+            Language display name (e.g., 'Español', 'English') or 'Desconocido'
+        """
+        # First try to find by code
+        for key, lang_info in self.languages.items():
+            if lang_info.get("code") == code_or_key:
+                return lang_info["name"]
+
+        # Then try direct key lookup
+        if code_or_key in self.languages:
+            return self.languages[code_or_key]["name"]
+
+        return "Desconocido"
+
     def reload_from_db(self):
         """
         Reload configuration from database.
