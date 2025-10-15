@@ -99,12 +99,26 @@ class WhisperTranscriber:
 
     def unload_model(self):
         """Unload model to free GPU memory."""
+        import gc
         with self.load_lock:
             if self.model:
                 del self.model
                 self.model = None
                 self.is_model_loaded = False
-                logger.info("Whisper model unloaded")
+
+                # Force garbage collection to free memory
+                gc.collect()
+
+                # Try to clear CUDA cache if available
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                        logger.info("CUDA cache cleared")
+                except ImportError:
+                    pass  # torch not available, that's fine
+
+                logger.info("Whisper model unloaded and memory freed")
 
     def transcribe(self,
                    audio: np.ndarray,

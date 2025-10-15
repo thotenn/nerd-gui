@@ -199,7 +199,7 @@ class WhisperBackend(BaseBackend):
 
     def stop(self) -> bool:
         """
-        Stop Whisper dictation.
+        Stop Whisper dictation and optionally unload model.
 
         Returns:
             True if dictation stopped successfully
@@ -240,6 +240,11 @@ class WhisperBackend(BaseBackend):
                 'text_typed': self.total_text_typed,
                 'performance_stats': self.transcriber.get_performance_stats()
             }
+
+            # IMPORTANT: Unload model to free VRAM
+            if self.transcriber:
+                self.transcriber.unload_model()
+                logger.info("Whisper model unloaded from VRAM")
 
             self._set_status(BackendStatus.STOPPED)
             logger.info("Whisper dictation stopped")
@@ -370,6 +375,41 @@ class WhisperBackend(BaseBackend):
         if self.transcription_worker:
             self.transcription_worker.set_language(language)
             logger.info(f"Changed transcription language to '{language}'")
+
+    def update_model_size(self, new_model_size: str) -> bool:
+        """
+        Update the Whisper model size. Unloads current model and prepares for new one.
+
+        Args:
+            new_model_size: New model size (tiny, base, small, medium, large)
+
+        Returns:
+            True if update successful
+        """
+        logger.info(f"Updating Whisper model from '{self.model_size}' to '{new_model_size}'")
+
+        # Stop if running
+        if self.is_running:
+            logger.info("Stopping current session before model update")
+            self.stop()
+
+        # Unload current model if loaded
+        if self.transcriber and self.transcriber.is_model_loaded:
+            self.transcriber.unload_model()
+            logger.info("Previous model unloaded from VRAM")
+
+        # Update model size
+        old_model = self.model_size
+        self.model_size = new_model_size
+
+        # Update transcriber with new model size
+        if self.transcriber:
+            self.transcriber.model_size = new_model_size
+            self.transcriber.is_model_loaded = False
+            logger.info(f"Model size updated from '{old_model}' to '{new_model_size}'")
+            return True
+
+        return False
 
     def cleanup(self):
         """Cleanup resources and unload model."""

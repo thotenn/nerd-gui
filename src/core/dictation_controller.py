@@ -25,6 +25,45 @@ class DictationController:
         self.backend_type = getattr(config, 'backend', 'vosk')
 
         self._init_backends()
+
+    def reload_backend_from_config(self):
+        """
+        Reload the backend from the current config.
+        Call this after config has been reloaded from database.
+        """
+        new_backend = getattr(self.config, 'backend', 'vosk')
+
+        # Check if backend type changed
+        if new_backend != self.backend_type:
+            logger.info(f"Backend changed in config from {self.backend_type} to {new_backend}")
+            self.set_backend(new_backend)
+
+        # For Whisper backend, check if model size changed
+        if new_backend == 'whisper' and 'whisper' in self.backends:
+            whisper_backend = self.backends['whisper']
+            new_model = getattr(self.config, 'whisper_model', 'medium')
+
+            # Extract model size from Hugging Face ID (e.g., "Systran/faster-whisper-medium" -> "medium")
+            if '/' in new_model:
+                # Handle different model name patterns
+                model_part = new_model.split('/')[-1]  # Get "faster-whisper-medium" or "faster-whisper-large-v3"
+                if 'faster-whisper-' in model_part:
+                    new_model_size = model_part.replace('faster-whisper-', '')  # Remove prefix to get "medium" or "large-v3"
+                else:
+                    new_model_size = model_part
+            else:
+                new_model_size = new_model
+
+            current_model = whisper_backend.model_size
+
+            if new_model_size != current_model:
+                logger.info(f"Whisper model changed from '{current_model}' to '{new_model_size}'")
+                # Stop any running session first
+                if self.is_running():
+                    logger.info("Stopping current session before model update")
+                    self.stop()
+                # Update the model
+                whisper_backend.update_model_size(new_model_size)
     
     def _init_backends(self):
         """Initialize available backends"""
@@ -44,6 +83,15 @@ class DictationController:
             # Initialize Whisper backend if available
             try:
                 whisper_model = getattr(self.config, 'whisper_model', 'medium')
+
+                # Parse model size from full Hugging Face ID
+                if '/' in whisper_model:
+                    model_part = whisper_model.split('/')[-1]
+                    if 'faster-whisper-' in model_part:
+                        whisper_model = model_part.replace('faster-whisper-', '')
+                    else:
+                        whisper_model = model_part
+
                 whisper_device = getattr(self.config, 'whisper_device', 'cuda')
                 whisper_compute_type = getattr(self.config, 'whisper_compute_type', 'float16')
 
@@ -102,7 +150,7 @@ class DictationController:
 
         self.backend_type = backend_type
         self.current_backend = self.backends[backend_type]
-        logger.info(f"Switched to {backend_type} backend")
+        logger.info(f"Switched to {backend_type} backend (current_backend is now: {self.current_backend.name})")
         return True
 
     def get_available_backends(self) -> Dict[str, str]:
@@ -143,6 +191,8 @@ class DictationController:
         """
         if not self.current_backend:
             return False, "No backend available"
+
+        logger.info(f"Starting dictation with backend_type: {self.backend_type}, current_backend: {self.current_backend.name}")
 
         # Stop any existing session first
         if self.is_running():
