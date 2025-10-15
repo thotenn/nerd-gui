@@ -6,7 +6,6 @@ mimicking nerd-dictation's behavior.
 """
 
 import subprocess
-import time
 import threading
 import logging
 from typing import Optional, Callable
@@ -56,6 +55,9 @@ class KeyboardOutput:
         self.is_running = False
         self.output_thread: Optional[threading.Thread] = None
 
+        # Track previous text for correction support (like nerd-dictation)
+        self.previous_text = ""
+
     def start(self):
         """Start the keyboard output worker."""
         if not self.xdotool_available:
@@ -87,21 +89,28 @@ class KeyboardOutput:
         if self.output_thread:
             self.output_thread.join(timeout=1.0)
 
+        # Reset previous text on stop
+        self.previous_text = ""
+
         logger.info("Stopped keyboard output worker")
 
-    def type_text(self, text: str):
+    def type_text(self, text: str, enable_correction: bool = True):
         """
-        Queue text to be typed.
+        Queue text to be typed with optional correction support.
+
+        If enable_correction is True, this will compare with previous text
+        and delete/rewrite changed portions (like nerd-dictation).
 
         Args:
             text: Text to type
+            enable_correction: Enable correction by comparing with previous text
         """
         if not self.xdotool_available:
             logger.error("Cannot type text: xdotool not available")
             return
 
         if self.is_running:
-            self.output_queue.put(text)
+            self.output_queue.put((text, enable_correction))
         else:
             logger.warning("Keyboard output not running, cannot type text")
 
@@ -110,14 +119,20 @@ class KeyboardOutput:
         while self.is_running:
             try:
                 # Get text from queue with timeout
-                text = self.output_queue.get(timeout=0.1)
+                item = self.output_queue.get(timeout=0.1)
 
                 # Check for sentinel value
-                if text is None:
+                if item is None:
                     break
 
-                # Type the text
-                self._type_text_immediate(text)
+                # Handle both old format (string) and new format (tuple)
+                if isinstance(item, tuple):
+                    text, enable_correction = item
+                else:
+                    text, enable_correction = item, False
+
+                # Type the text with optional correction
+                self._type_text_with_correction(text, enable_correction)
 
             except queue.Empty:
                 continue
@@ -125,6 +140,82 @@ class KeyboardOutput:
                 logger.error(f"Output loop error: {e}")
                 if self.on_error:
                     self.on_error(f"Output error: {e}")
+
+    def _type_text_with_correction(self, text: str, enable_correction: bool):
+        """
+        Type text with optional correction (like nerd-dictation).
+
+        Compares with previous text and deletes/rewrites changed portions.
+
+        Args:
+            text: Text to type
+            enable_correction: If True, compare with previous text and correct
+        """
+        if not text.strip():
+            return
+
+        if enable_correction and self.previous_text:
+            # Find where the texts start to differ (like nerd-dictation does)
+            match_index = 0
+            min_len = min(len(text), len(self.previous_text))
+
+            for i in range(min_len):
+                if text[i] != self.previous_text[i]:
+                    match_index = i
+                    break
+            else:
+                # Texts match up to min_len
+                match_index = min_len
+
+            # Calculate how many characters to delete
+            chars_to_delete = len(self.previous_text) - match_index
+
+            # Only type the new/changed portion
+            new_text = text[match_index:]
+
+            if chars_to_delete > 0:
+                logger.info(f"Correction: deleting {chars_to_delete} chars, typing '{new_text}'")
+                # Send BackSpace keys to delete old text
+                self._delete_characters(chars_to_delete)
+
+            if new_text:
+                # Type the new text
+                self._type_text_immediate(new_text)
+        else:
+            # No correction, just type the text
+            self._type_text_immediate(text)
+
+        # Update previous text
+        self.previous_text = text
+
+    def _delete_characters(self, count: int):
+        """
+        Delete characters by sending BackSpace keys.
+
+        Args:
+            count: Number of characters to delete
+        """
+        if count <= 0:
+            return
+
+        try:
+            # Send BackSpace keys (like nerd-dictation does)
+            cmd = ['xdotool', 'key', '--'] + ['BackSpace'] * count
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                error_msg = f"xdotool delete failed: {result.stderr}"
+                logger.error(error_msg)
+                if self.on_error:
+                    self.on_error(error_msg)
+            else:
+                logger.debug(f"Deleted {count} characters")
+
+        except Exception as e:
+            error_msg = f"Failed to delete characters: {e}"
+            logger.error(error_msg)
+            if self.on_error:
+                self.on_error(error_msg)
 
     def _type_text_immediate(self, text: str):
         """
@@ -208,6 +299,16 @@ class KeyboardOutput:
             logger.error(f"Failed to press key {key}: {e}")
             if self.on_error:
                 self.on_error(f"Key press error: {e}")
+
+    def reset_correction_state(self):
+        """
+        Reset the correction state.
+
+        Call this when switching documents or contexts where
+        the previous text is no longer relevant.
+        """
+        self.previous_text = ""
+        logger.debug("Reset correction state")
 
     def check_dependencies(self) -> dict:
         """
@@ -295,41 +396,91 @@ class TextProcessor:
         if not text:
             return text
 
-        processed = text.lower()
+        logger.debug(f"Text processing - Input: '{text}'")
 
-        # Apply text replacements
+        # First, normalize punctuation spacing (Whisper often doesn't add spaces)
+        processed = self._normalize_punctuation_spacing(text)
+        logger.debug(f"Text processing - After normalization: '{processed}'")
+
+        # DON'T convert to lowercase - Whisper's capitalization is usually correct
+        # Only apply specific text replacements that need case changes
+
+        # Apply text replacements (case-sensitive)
         for old, new in self.text_replacements.items():
             processed = processed.replace(old, new)
 
-        # Handle punctuation commands
+        # Handle punctuation commands (spoken words to actual punctuation)
+        # These need to be checked in lowercase
         words = processed.split()
         i = 0
         while i < len(words):
-            word = words[i]
-            if word in self.punctuation_map:
+            word_lower = words[i].lower()
+            if word_lower in self.punctuation_map:
                 # Replace punctuation command with actual punctuation
                 # Try to combine with previous word
                 if i > 0 and len(words[i-1]) > 0:
-                    words[i-1] += self.punctuation_map[word]
+                    words[i-1] += self.punctuation_map[word_lower]
+                    words.pop(i)
                 else:
-                    words[i] = self.punctuation_map[word]
+                    words[i] = self.punctuation_map[word_lower]
                     i += 1
-                # Remove the punctuation command
-                if i < len(words) and words[i] == word:
-                    words.pop(i)
-                else:
-                    words.pop(i)
             else:
                 i += 1
 
-        # Capitalize first letter of sentences
         processed = ' '.join(words)
-        processed = self._capitalize_sentences(processed)
+        logger.debug(f"Text processing - After replacements: '{processed}'")
 
         # Clean up extra spaces
         processed = ' '.join(processed.split())
 
+        logger.debug(f"Text processing - Final output: '{processed}'")
         return processed
+
+    def _normalize_punctuation_spacing(self, text: str) -> str:
+        """
+        Add spaces after punctuation marks where they are missing.
+        Whisper often returns text without spaces after punctuation.
+
+        Args:
+            text: Text with potentially missing spaces after punctuation
+
+        Returns:
+            Text with proper spacing after punctuation
+        """
+        import re
+
+        original = text
+
+        # Add space after sentence-ending punctuation if followed by any character (including ¿¡)
+        # Handles: .Era → . Era, ?Los → ? Los, !Pero → ! Pero, .¿ → . ¿
+        before = text
+        text = re.sub(r'([.!?])([A-ZÑÁÉÍÓÚÜa-zñáéíóúü¿¡])', r'\1 \2', text)
+        if text != before:
+            logger.debug(f"Normalization - After punctuation+letter: '{before}' → '{text}'")
+
+        # Add space after commas if followed by a letter
+        before = text
+        text = re.sub(r'(,)([A-Za-zÑñÁÉÍÓÚÜáéíóúü])', r'\1 \2', text)
+        if text != before:
+            logger.debug(f"Normalization - After comma+letter: '{before}' → '{text}'")
+
+        # Add space after colons and semicolons if followed by a letter
+        before = text
+        text = re.sub(r'([;:])([A-Za-zÑñÁÉÍÓÚÜáéíóúü])', r'\1 \2', text)
+        if text != before:
+            logger.debug(f"Normalization - After colon/semicolon+letter: '{before}' → '{text}'")
+
+        # Handle cases where uppercase letter directly follows lowercase (word boundaries)
+        # Handles: listoEra → listo Era, gastrosQue → gastros Que, tantasPuntadas → tantas Puntadas
+        before = text
+        text = re.sub(r'([a-zñáéíóúü])([A-ZÑÁÉÍÓÚÜ])', r'\1 \2', text)
+        if text != before:
+            logger.debug(f"Normalization - After lowercase+uppercase: '{before}' → '{text}'")
+
+        if text != original:
+            logger.info(f"Punctuation normalization applied: '{original}' → '{text}'")
+
+        return text
 
     def _capitalize_sentences(self, text: str) -> str:
         """

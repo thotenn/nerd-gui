@@ -73,6 +73,7 @@ class WhisperBackend(BaseBackend):
         self.session_start_time: Optional[float] = None
         self.total_text_typed = 0
         self.last_transcription_time: Optional[float] = None
+        self.is_first_chunk = True  # Track if this is the first chunk of the session
 
         # Component placeholders
         self.transcriber = None
@@ -152,6 +153,9 @@ class WhisperBackend(BaseBackend):
                 self._set_status(BackendStatus.ERROR, "Failed to start keyboard output")
                 return False
 
+            # Reset correction state for new session
+            self.keyboard_output.reset_correction_state()
+
             # Start transcription worker
             self.transcription_worker = TranscriptionWorker(
                 transcriber=self.transcriber,
@@ -180,6 +184,7 @@ class WhisperBackend(BaseBackend):
             self.session_start_time = time.time()
             self.total_text_typed = 0
             self.last_transcription_time = None
+            self.is_first_chunk = True  # Reset for new session
 
             self._set_status(BackendStatus.RUNNING)
             logger.info(f"Whisper dictation started with language '{language}'")
@@ -319,8 +324,18 @@ class WhisperBackend(BaseBackend):
             # Process the text (capitalization, punctuation, etc.)
             processed_text = self.text_processor.process_text(text)
 
-            # Type the processed text
-            self.keyboard_output.type_text(processed_text)
+            # Add space before chunk (except for first chunk)
+            # This prevents chunks from being concatenated without spaces
+            if not self.is_first_chunk:
+                processed_text = ' ' + processed_text
+                logger.debug("Added leading space to separate from previous chunk")
+            else:
+                self.is_first_chunk = False
+                logger.debug("First chunk of session - no leading space")
+
+            # Type the processed text WITHOUT correction
+            # Each Whisper chunk is independent (not streaming), so we just append text
+            self.keyboard_output.type_text(processed_text, enable_correction=False)
 
             # Update statistics
             self.total_text_typed += len(processed_text)
