@@ -25,11 +25,20 @@ class MainWindow:
 
         # Window configuration
         self.root.title("Dictation Manager")
-        self.root.geometry("800x700")
+        # Start with main view size since we show main view initially
+        self.root.geometry("600x350")
         self.root.resizable(True, True)
 
-        # Set minimum size
-        self.root.minsize(600, 500)
+        # Set minimum size for main view
+        self.root.minsize(500, 300)
+
+        # Center window on screen initially
+        self.root.update_idletasks()
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = (screen_width - 600) // 2
+        y = (screen_height - 350) // 2
+        self.root.geometry(f"600x350+{x}+{y}")
 
         # Create main container
         self.container = ttk.Frame(self.root)
@@ -505,18 +514,38 @@ class MainWindow:
         """Show the main view"""
         self.settings_frame.grid_remove()
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        self.root.geometry("600x350")
+
+        # Get current window position
+        self.root.update_idletasks()
+        x = self.root.winfo_x()
+        y = self.root.winfo_y()
+
+        # Compact size for main view, maintaining position
+        self.root.geometry(f"600x350+{x}+{y}")
         self.root.minsize(500, 300)
+        # No max size restriction for main view (allow free resizing)
 
     def show_settings_view(self):
         """Show the settings view"""
         self.main_frame.grid_remove()
         self.settings_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        self.root.geometry("800x700")
-        self.root.minsize(700, 600)
+
+        # Get current window position
+        self.root.update_idletasks()
+        x = self.root.winfo_x()
+        y = self.root.winfo_y()
+
+        # Larger size for settings to show all content, maintaining position
+        # Increased height to accommodate all Whisper settings and debug options
+        self.root.geometry(f"850x900+{x}+{y}")
+        self.root.minsize(800, 850)    # Minimum to ensure all content is visible
+        # No max size restriction (allow free resizing)
 
         # Load current settings
         self._load_settings()
+
+        # Update the window to ensure proper layout
+        self.root.update_idletasks()
 
     def _load_settings(self):
         """Load current settings from database or config"""
@@ -834,6 +863,26 @@ class MainWindow:
 
         # Update status to show error
         self._update_status()
+
+    def _center_window(self, width, height):
+        """Center window on screen after resizing"""
+        # Update window to get accurate size info
+        self.root.update_idletasks()
+
+        # Get screen dimensions
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+
+        # Calculate position for centering
+        x = (screen_width - width) // 2
+        y = (screen_height - height) // 2
+
+        # Ensure window is not off-screen
+        x = max(0, x)
+        y = max(0, y)
+
+        # Set geometry with position
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
 
     def _update_ui_from_config(self):
         """Update UI elements based on current config values"""
