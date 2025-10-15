@@ -30,7 +30,7 @@ class Config:
         self.backend = env_vars.get("BACKEND", "vosk")  # 'vosk' or 'whisper'
 
         # Whisper configuration (defaults from .env, can be overridden by database)
-        self.whisper_model = env_vars.get("WHISPER_MODEL", "medium")  # tiny, base, small, medium, large
+        self.whisper_model = env_vars.get("WHISPER_MODEL", "Systran/faster-whisper-medium")  # Hugging Face model ID
         self.whisper_device = env_vars.get("WHISPER_DEVICE", "cuda")  # cuda or cpu
         self.whisper_compute_type = env_vars.get("WHISPER_COMPUTE_TYPE", "float16")  # float16 for GPU, float32 for CPU
 
@@ -131,6 +131,11 @@ class Config:
             if backend:
                 self.backend = backend
 
+            # Load Whisper model
+            whisper_model = self.database.get_setting('whisper_model')
+            if whisper_model:
+                self.whisper_model = whisper_model
+
             # Load Whisper configuration
             whisper_device = self.database.get_setting('whisper_device')
             if whisper_device:
@@ -196,10 +201,28 @@ class Config:
         # Load environment variables again to get potential Whisper settings
         env_vars = self._load_env()
 
+        # Map old model names to new Hugging Face IDs
+        model_name_mapping = {
+            'tiny': 'Systran/faster-whisper-tiny',
+            'base': 'Systran/faster-whisper-base',
+            'small': 'Systran/faster-whisper-small',
+            'medium': 'Systran/faster-whisper-medium',
+            'large': 'Systran/faster-whisper-large-v3',
+            'large-v3': 'Systran/faster-whisper-large-v3'
+        }
+
+        # Get whisper model and convert if needed
+        whisper_model_raw = env_vars.get('WHISPER_MODEL')
+        if whisper_model_raw:
+            # Convert old names to new IDs if necessary
+            whisper_model = model_name_mapping.get(whisper_model_raw.lower(), whisper_model_raw)
+        else:
+            whisper_model = None
+
         # List of settings to migrate from .env to database
         settings_to_migrate = {
             'backend': env_vars.get('BACKEND'),
-            'whisper_model': env_vars.get('WHISPER_MODEL'),
+            'whisper_model': whisper_model,  # Single model for all languages (converted to HF ID)
             'whisper_device': env_vars.get('WHISPER_DEVICE'),
             'whisper_compute_type': env_vars.get('WHISPER_COMPUTE_TYPE'),
             'whisper_device_index': env_vars.get('WHISPER_DEVICE_INDEX'),

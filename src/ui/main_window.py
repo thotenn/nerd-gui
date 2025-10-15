@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk
 from pathlib import Path
 import sys
+import threading
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -25,11 +26,11 @@ class MainWindow:
         
         # Window configuration
         self.root.title("Dictation Manager")
-        self.root.geometry("600x300")
+        self.root.geometry("600x350")
         self.root.resizable(True, True)
 
         # Set minimum size
-        self.root.minsize(500, 250)
+        self.root.minsize(500, 300)
         
         # Create UI
         self._create_ui()
@@ -64,6 +65,9 @@ class MainWindow:
 
         # Control buttons frame
         self._create_control_buttons(main_frame)
+
+        # Download progress frame (hidden by default)
+        self._create_progress_frame(main_frame)
     
     def _create_status_frame(self, parent):
         """Create status display frame"""
@@ -127,6 +131,44 @@ class MainWindow:
         )
         self.settings_btn.grid(row=0, column=3, padx=5)
 
+    def _create_progress_frame(self, parent):
+        """Create download progress frame (hidden by default)"""
+        self.progress_frame = ttk.Frame(parent)
+        self.progress_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(10, 0))
+        self.progress_frame.columnconfigure(0, weight=1)
+
+        # Progress label
+        self.progress_label = ttk.Label(
+            self.progress_frame,
+            text="Descargando modelo...",
+            font=("Arial", 10)
+        )
+        self.progress_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
+
+        # Progress bar (indeterminate mode - animación)
+        self.progress_bar = ttk.Progressbar(
+            self.progress_frame,
+            mode='indeterminate',
+            length=400
+        )
+        self.progress_bar.grid(row=1, column=0, sticky=(tk.W, tk.E))
+
+        # Hide by default
+        self.progress_frame.grid_remove()
+
+    def show_download_progress(self, model_name):
+        """Show download progress bar with model name"""
+        self.progress_label.config(text=f"📥 Descargando modelo: {model_name}")
+        self.progress_frame.grid()
+        self.progress_bar.start(10)  # Start animation (10ms interval)
+        self.root.update_idletasks()
+
+    def hide_download_progress(self):
+        """Hide download progress bar"""
+        self.progress_bar.stop()
+        self.progress_frame.grid_remove()
+        self.root.update_idletasks()
+
     def _on_stop_clicked(self):
         """Handle stop button click"""
         self.controller.stop()
@@ -143,10 +185,25 @@ class MainWindow:
 
         # Check if using Whisper backend
         if self.config.backend == "whisper":
-            # Whisper doesn't need model_path, just language code
-            logger.info(f"Starting Whisper backend with language '{lang_code}'")
-            success, message = self.controller.start(lang_code, None)
-            logger.info(f"Start result: success={success}, message={message}")
+            # Show progress bar for Whisper (model might need downloading)
+            model_name = self.config.whisper_model.split('/')[-1]  # Extract "faster-whisper-medium"
+            self.show_download_progress(model_name)
+
+            # Disable language buttons during loading
+            self.spanish_btn.config(state='disabled')
+            self.english_btn.config(state='disabled')
+
+            # Start Whisper in background thread to keep UI responsive
+            def start_whisper():
+                logger.info(f"Starting Whisper backend with language '{lang_code}'")
+                success, message = self.controller.start(lang_code, None)
+                logger.info(f"Start result: success={success}, message={message}")
+
+                # Schedule UI update in main thread
+                self.root.after(0, self._on_whisper_started)
+
+            thread = threading.Thread(target=start_whisper, daemon=True)
+            thread.start()
         else:
             # Vosk backend - needs model path
             # Get last used model for this language
@@ -167,6 +224,18 @@ class MainWindow:
                 else:
                     logger.warning(f"No models found for language: {language}")
 
+            self._update_status()
+
+    def _on_whisper_started(self):
+        """Called after Whisper backend starts (in main thread)"""
+        # Hide progress bar
+        self.hide_download_progress()
+
+        # Re-enable language buttons
+        self.spanish_btn.config(state='normal')
+        self.english_btn.config(state='normal')
+
+        # Update status
         self._update_status()
 
     def _on_settings_clicked(self):

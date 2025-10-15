@@ -218,70 +218,59 @@ class SettingsWindow:
         self.whisper_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(15, 0))
         self.whisper_frame.columnconfigure(1, weight=1)
 
-        # Whisper model sizes
-        model_sizes = ["tiny", "base", "small", "medium", "large"]
-
-        # Spanish model selection
-        ttk.Label(
+        # Info about Whisper models being multilingual
+        info_label = ttk.Label(
             self.whisper_frame,
-            text="Spanish Model:",
-            font=("Arial", 10, "bold")
-        ).grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
-
-        self.whisper_spanish_var = tk.StringVar(value="medium")
-        self.whisper_spanish_combo = ttk.Combobox(
-            self.whisper_frame,
-            textvariable=self.whisper_spanish_var,
-            values=model_sizes,
-            state="readonly",
-            width=20
-        )
-        self.whisper_spanish_combo.grid(row=0, column=1, sticky=tk.W, pady=(0, 5))
-
-        # Info about Spanish model
-        ttk.Label(
-            self.whisper_frame,
-            text="(tiny: fastest, large: most accurate)",
-            font=("Arial", 8, "italic"),
-            foreground="gray"
-        ).grid(row=0, column=2, sticky=tk.W, padx=(10, 0), pady=(0, 5))
-
-        # English model selection
-        ttk.Label(
-            self.whisper_frame,
-            text="English Model:",
-            font=("Arial", 10, "bold")
-        ).grid(row=1, column=0, sticky=tk.W, pady=(10, 5))
-
-        self.whisper_english_var = tk.StringVar(value="medium")
-        self.whisper_english_combo = ttk.Combobox(
-            self.whisper_frame,
-            textvariable=self.whisper_english_var,
-            values=model_sizes,
-            state="readonly",
-            width=20
-        )
-        self.whisper_english_combo.grid(row=1, column=1, sticky=tk.W, pady=(10, 5))
-
-        # Info about English model
-        ttk.Label(
-            self.whisper_frame,
-            text="(tiny: fastest, large: most accurate)",
-            font=("Arial", 8, "italic"),
-            foreground="gray"
-        ).grid(row=1, column=2, sticky=tk.W, padx=(10, 0), pady=(10, 5))
-
-        # Model info
-        ttk.Label(
-            self.whisper_frame,
-            text="ℹ Models will be downloaded automatically on first use",
+            text="ℹ️ Whisper models are multilingual - one model works for all languages",
             font=("Arial", 9, "italic"),
             foreground="#0066cc"
-        ).grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=(15, 0))
+        )
+        info_label.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 15))
+
+        # Whisper model sizes - using official Systran faster-whisper model names
+        model_options = [
+            ("Tiny (~75MB, fastest)", "Systran/faster-whisper-tiny"),
+            ("Base (~145MB)", "Systran/faster-whisper-base"),
+            ("Small (~466MB)", "Systran/faster-whisper-small"),
+            ("Medium (~1.5GB)", "Systran/faster-whisper-medium"),
+            ("Large-v3 (~3.09GB, most accurate)", "Systran/faster-whisper-large-v3")
+        ]
+
+        # Extract display names and actual model IDs
+        self.model_display_names = [display for display, _ in model_options]
+        self.model_ids = {display: model_id for display, model_id in model_options}
+        self.model_id_to_display = {model_id: display for display, model_id in model_options}
+
+        # Model selection (single dropdown for all languages)
+        ttk.Label(
+            self.whisper_frame,
+            text="Model Size:",
+            font=("Arial", 10, "bold")
+        ).grid(row=1, column=0, sticky=tk.W, pady=(0, 5))
+
+        self.whisper_model_var = tk.StringVar(value="Medium (~1.5GB)")
+        self.whisper_model_combo = ttk.Combobox(
+            self.whisper_frame,
+            textvariable=self.whisper_model_var,
+            values=self.model_display_names,
+            state="readonly",
+            width=35
+        )
+        self.whisper_model_combo.grid(row=1, column=1, sticky=tk.W, pady=(0, 5), columnspan=2)
+
+        # Download info
+        ttk.Label(
+            self.whisper_frame,
+            text="✓ Downloaded automatically on first use from: huggingface.co/Systran\n"
+                 "✓ Saved to: ~/.cache/huggingface/hub/\n"
+                 "✓ Larger models = better accuracy but slower and more VRAM",
+            font=("Arial", 9),
+            foreground="gray"
+        ).grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=(5, 0))
 
         # Separator
         ttk.Separator(self.whisper_frame, orient=tk.HORIZONTAL).grid(
-            row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(20, 20)
+            row=4, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(20, 20)
         )
 
         # Advanced settings section
@@ -294,14 +283,14 @@ class SettingsWindow:
             self.whisper_frame,
             text="Advanced Settings",
             font=("Arial", 11, "bold")
-        ).grid(row=4, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
+        ).grid(row=5, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
 
         # Device selection
         ttk.Label(
             self.whisper_frame,
             text="Device:",
             font=("Arial", 9)
-        ).grid(row=5, column=0, sticky=tk.W, pady=5)
+        ).grid(row=6, column=0, sticky=tk.W, pady=5)
 
         self.whisper_device_var = tk.StringVar(value="cuda")
         device_combo = ttk.Combobox(
@@ -311,21 +300,21 @@ class SettingsWindow:
             state="readonly",
             width=15
         )
-        device_combo.grid(row=5, column=1, sticky=tk.W, pady=5)
+        device_combo.grid(row=6, column=1, sticky=tk.W, pady=5)
 
         ttk.Label(
             self.whisper_frame,
             text="(cuda for GPU, cpu for CPU-only)",
             font=("Arial", 8, "italic"),
             foreground="gray"
-        ).grid(row=5, column=2, sticky=tk.W, padx=(10, 0), pady=5)
+        ).grid(row=6, column=2, sticky=tk.W, padx=(10, 0), pady=5)
 
         # Compute Type selection
         ttk.Label(
             self.whisper_frame,
             text="Compute Type:",
             font=("Arial", 9)
-        ).grid(row=6, column=0, sticky=tk.W, pady=5)
+        ).grid(row=7, column=0, sticky=tk.W, pady=5)
 
         self.whisper_compute_type_var = tk.StringVar(value="float16")
         compute_combo = ttk.Combobox(
@@ -335,21 +324,21 @@ class SettingsWindow:
             state="readonly",
             width=15
         )
-        compute_combo.grid(row=6, column=1, sticky=tk.W, pady=5)
+        compute_combo.grid(row=7, column=1, sticky=tk.W, pady=5)
 
         ttk.Label(
             self.whisper_frame,
             text="(float16 for GPU, float32 for CPU)",
             font=("Arial", 8, "italic"),
             foreground="gray"
-        ).grid(row=6, column=2, sticky=tk.W, padx=(10, 0), pady=5)
+        ).grid(row=7, column=2, sticky=tk.W, padx=(10, 0), pady=5)
 
         # Device Index (optional)
         ttk.Label(
             self.whisper_frame,
             text="Device Index:",
             font=("Arial", 9)
-        ).grid(row=7, column=0, sticky=tk.W, pady=5)
+        ).grid(row=8, column=0, sticky=tk.W, pady=5)
 
         self.whisper_device_index_var = tk.StringVar(value="")
         device_index_entry = ttk.Entry(
@@ -357,21 +346,21 @@ class SettingsWindow:
             textvariable=self.whisper_device_index_var,
             width=18
         )
-        device_index_entry.grid(row=7, column=1, sticky=tk.W, pady=5)
+        device_index_entry.grid(row=8, column=1, sticky=tk.W, pady=5)
 
         ttk.Label(
             self.whisper_frame,
             text="(empty for auto-detect, or specific index)",
             font=("Arial", 8, "italic"),
             foreground="gray"
-        ).grid(row=7, column=2, sticky=tk.W, padx=(10, 0), pady=5)
+        ).grid(row=8, column=2, sticky=tk.W, padx=(10, 0), pady=5)
 
         # Silence Duration
         ttk.Label(
             self.whisper_frame,
             text="Silence Duration:",
             font=("Arial", 9)
-        ).grid(row=8, column=0, sticky=tk.W, pady=5)
+        ).grid(row=9, column=0, sticky=tk.W, pady=5)
 
         self.whisper_silence_var = tk.DoubleVar(value=1.0)
         silence_spinbox = ttk.Spinbox(
@@ -382,21 +371,21 @@ class SettingsWindow:
             textvariable=self.whisper_silence_var,
             width=16
         )
-        silence_spinbox.grid(row=8, column=1, sticky=tk.W, pady=5)
+        silence_spinbox.grid(row=9, column=1, sticky=tk.W, pady=5)
 
         ttk.Label(
             self.whisper_frame,
             text="(0.5-2.0s, wait time before processing)",
             font=("Arial", 8, "italic"),
             foreground="gray"
-        ).grid(row=8, column=2, sticky=tk.W, padx=(10, 0), pady=5)
+        ).grid(row=9, column=2, sticky=tk.W, padx=(10, 0), pady=5)
 
         # Energy Threshold
         ttk.Label(
             self.whisper_frame,
             text="Energy Threshold:",
             font=("Arial", 9)
-        ).grid(row=9, column=0, sticky=tk.W, pady=5)
+        ).grid(row=10, column=0, sticky=tk.W, pady=5)
 
         self.whisper_energy_var = tk.DoubleVar(value=0.008)
         energy_spinbox = ttk.Spinbox(
@@ -407,21 +396,21 @@ class SettingsWindow:
             textvariable=self.whisper_energy_var,
             width=16
         )
-        energy_spinbox.grid(row=9, column=1, sticky=tk.W, pady=5)
+        energy_spinbox.grid(row=10, column=1, sticky=tk.W, pady=5)
 
         ttk.Label(
             self.whisper_frame,
             text="(0.0001-0.01, microphone sensitivity)",
             font=("Arial", 8, "italic"),
             foreground="gray"
-        ).grid(row=9, column=2, sticky=tk.W, padx=(10, 0), pady=5)
+        ).grid(row=10, column=2, sticky=tk.W, padx=(10, 0), pady=5)
 
         # Min Audio Length
         ttk.Label(
             self.whisper_frame,
             text="Min Audio Length:",
             font=("Arial", 9)
-        ).grid(row=10, column=0, sticky=tk.W, pady=5)
+        ).grid(row=11, column=0, sticky=tk.W, pady=5)
 
         self.whisper_min_audio_var = tk.DoubleVar(value=0.3)
         min_audio_spinbox = ttk.Spinbox(
@@ -432,14 +421,14 @@ class SettingsWindow:
             textvariable=self.whisper_min_audio_var,
             width=16
         )
-        min_audio_spinbox.grid(row=10, column=1, sticky=tk.W, pady=5)
+        min_audio_spinbox.grid(row=11, column=1, sticky=tk.W, pady=5)
 
         ttk.Label(
             self.whisper_frame,
             text="(0.3-1.0s, minimum audio to process)",
             font=("Arial", 8, "italic"),
             foreground="gray"
-        ).grid(row=10, column=2, sticky=tk.W, padx=(10, 0), pady=5)
+        ).grid(row=11, column=2, sticky=tk.W, padx=(10, 0), pady=5)
 
     def _create_debug_section(self, parent):
         """Create debug settings section"""
@@ -520,12 +509,10 @@ class SettingsWindow:
             self.vosk_english_var.set(vosk_en)
 
         # Load Whisper settings
-        self.whisper_spanish_var.set(
-            self.database.get_setting('whisper_model_es', 'medium')
-        )
-        self.whisper_english_var.set(
-            self.database.get_setting('whisper_model_en', 'medium')
-        )
+        model_id = self.database.get_setting('whisper_model', self.config.whisper_model)
+        # Convert model ID to display name (e.g., "Systran/faster-whisper-medium" -> "Medium (~1.5GB)")
+        display_name = self.model_id_to_display.get(model_id, "Medium (~1.5GB)")
+        self.whisper_model_var.set(display_name)
         self.whisper_device_var.set(
             self.database.get_setting('whisper_device', self.config.whisper_device)
         )
@@ -589,8 +576,10 @@ class SettingsWindow:
                 self.database.save_setting('vosk_model_en', self.vosk_english_var.get())
 
             # Save Whisper settings
-            self.database.save_setting('whisper_model_es', self.whisper_spanish_var.get())
-            self.database.save_setting('whisper_model_en', self.whisper_english_var.get())
+            # Convert display name to model ID (e.g., "Medium (~1.5GB)" -> "Systran/faster-whisper-medium")
+            display_name = self.whisper_model_var.get()
+            model_id = self.model_ids.get(display_name, "Systran/faster-whisper-medium")
+            self.database.save_setting('whisper_model', model_id)
             self.database.save_setting('whisper_device', self.whisper_device_var.get())
             self.database.save_setting('whisper_compute_type', self.whisper_compute_type_var.get())
             self.database.save_setting('whisper_device_index', self.whisper_device_index_var.get())
