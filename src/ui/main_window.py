@@ -767,8 +767,11 @@ class MainWindow:
                 success, message = self.controller.start(lang_code, None)
                 logger.info(f"Start result: success={success}, message={message}")
 
-                # Schedule UI update in main thread
-                self.root.after(0, self._on_whisper_started)
+                # Schedule UI update in main thread with error handling
+                if not success:
+                    self.root.after(0, lambda: self._on_whisper_error(message))
+                else:
+                    self.root.after(0, self._on_whisper_started)
 
             thread = threading.Thread(target=start_whisper, daemon=True)
             thread.start()
@@ -778,7 +781,9 @@ class MainWindow:
 
             if last_model:
                 logger.info(f"Starting with last used model: {last_model['path']}")
-                self.controller.restart(lang_code, last_model["path"])
+                success, message = self.controller.restart(lang_code, last_model["path"])
+                if not success:
+                    messagebox.showerror("Error", f"Failed to start Vosk:\n{message}")
             else:
                 # Find first available model for this language
                 models = self.config.get_available_models()
@@ -786,9 +791,12 @@ class MainWindow:
 
                 if matching_models:
                     logger.info(f"Starting with first matching model: {matching_models[0]['path']}")
-                    self.controller.restart(lang_code, matching_models[0]["path"])
+                    success, message = self.controller.restart(lang_code, matching_models[0]["path"])
+                    if not success:
+                        messagebox.showerror("Error", f"Failed to start Vosk:\n{message}")
                 else:
                     logger.warning(f"No models found for language: {language}")
+                    messagebox.showwarning("No Models", f"No Vosk models found for {language}")
 
             self._update_status()
 
@@ -802,6 +810,29 @@ class MainWindow:
         self.english_btn.config(state='normal')
 
         # Update status
+        self._update_status()
+
+    def _on_whisper_error(self, error_message):
+        """Called when Whisper backend fails to start (in main thread)"""
+        # Hide progress bar
+        self.hide_download_progress()
+
+        # Re-enable language buttons
+        self.spanish_btn.config(state='normal')
+        self.english_btn.config(state='normal')
+
+        # Show error dialog
+        messagebox.showerror(
+            "Whisper Backend Error",
+            f"Failed to start Whisper backend:\n\n{error_message}\n\n"
+            "Possible solutions:\n"
+            "• Check if another process is using VRAM (e.g., Ollama)\n"
+            "• Try a smaller model (Settings → Whisper → Model Size)\n"
+            "• Switch to CPU mode (Settings → Whisper → Device)\n"
+            "• Use Vosk backend instead (Settings → Backend)"
+        )
+
+        # Update status to show error
         self._update_status()
 
     def _update_ui_from_config(self):

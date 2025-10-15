@@ -136,3 +136,16 @@ class BaseBackend(ABC):
         """
         self._status = status
         self._error_message = error_message
+
+    def reset_error_state(self):
+        """
+        Reset backend from ERROR state to STOPPED state.
+
+        This allows the backend to be used again after an error.
+        Can be overridden in subclasses for additional cleanup.
+        """
+        if self._status == BackendStatus.ERROR:
+            self._status = BackendStatus.STOPPED
+            self._error_message = None
+            return True
+        return False

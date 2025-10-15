@@ -194,6 +194,17 @@ class DictationController:
 
         logger.info(f"Starting dictation with backend_type: {self.backend_type}, current_backend: {self.current_backend.name}")
 
+        # Check if backend is in ERROR state and try to reset it
+        if hasattr(self.current_backend, 'status'):
+            from src.backends.base_backend import BackendStatus
+            if self.current_backend.status == BackendStatus.ERROR:
+                logger.info(f"Backend is in ERROR state, attempting to reset...")
+                if hasattr(self.current_backend, 'reset_error_state'):
+                    if self.current_backend.reset_error_state():
+                        logger.info("Backend reset from ERROR state successfully")
+                    else:
+                        logger.warning("Failed to reset backend from ERROR state")
+
         # Stop any existing session first
         if self.is_running():
             self.stop()
