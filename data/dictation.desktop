@@ -1,8 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Dictation Manager
-Comment=Manage nerd-dictation with multiple languages
-Exec=python3 /home/tho/soft/ai/dictation/main.py
-Icon=/home/tho/soft/ai/dictation/assets/logo.png
-Terminal=false
-Categories=Utility;AudioVideo;

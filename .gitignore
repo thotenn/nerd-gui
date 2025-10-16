@@ -1,6 +1,7 @@
 # Environment configuration
 .env
 CLAUDE.md
+docs/
 
 # Database
 data/*.db
@@ -20,6 +21,7 @@ __pycache__/
 venv/
 env/
 ENV/
+temp/
 
 # IDE
 .vscode/
@@ -32,3 +34,4 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+.aider*
