@@ -108,7 +108,8 @@ class DictationController:
                     device_index=device_index,
                     silence_duration=silence_duration,
                     energy_threshold=energy_threshold,
-                    min_audio_length=min_audio_length
+                    min_audio_length=min_audio_length,
+                    database=self.database
                 )
                 logger.info(f"Whisper backend initialized with model '{whisper_model}' on {whisper_device} "
                           f"(silence={silence_duration}s, threshold={energy_threshold}, min_length={min_audio_length}s)")

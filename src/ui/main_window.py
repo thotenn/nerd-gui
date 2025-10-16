@@ -117,6 +117,9 @@ class MainWindow:
         # Backend selection
         self._create_backend_section(content_frame)
 
+        # Voice Commands section
+        self._create_voice_commands_section(content_frame)
+
         # Debug settings
         self._create_debug_section(content_frame)
 
@@ -374,10 +377,145 @@ class MainWindow:
         )
         min_audio_spinbox.grid(row=11, column=1, sticky=tk.W, pady=5)
 
+    def _create_voice_commands_section(self, parent):
+        """Create voice commands configuration section"""
+        voice_frame = ttk.LabelFrame(parent, text="🔊 Voice Commands (Experimental)", padding="15")
+        voice_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(15, 0))
+        voice_frame.columnconfigure(1, weight=1)
+
+        # Info label
+        info_label = ttk.Label(
+            voice_frame,
+            text="ℹ️ Voice commands allow you to execute keyboard actions using voice (e.g., 'Tony Enter')\n"
+                 "Only works with Whisper backend. Requires xdotool to be installed.",
+            font=("Arial", 9, "italic"),
+            foreground="#0066cc",
+            wraplength=700,
+            justify=tk.LEFT
+        )
+        info_label.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 15))
+
+        # Enable checkbox
+        self.voice_commands_enabled_var = tk.BooleanVar(value=False)
+        enabled_check = ttk.Checkbutton(
+            voice_frame,
+            text="Enable Voice Commands",
+            variable=self.voice_commands_enabled_var,
+            command=self._on_voice_commands_toggle
+        )
+        enabled_check.grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=(0, 15))
+
+        # Keyword configuration
+        ttk.Label(
+            voice_frame,
+            text="Activation Keyword:",
+            font=("Arial", 10, "bold")
+        ).grid(row=2, column=0, sticky=tk.W, pady=(0, 5))
+
+        self.voice_keyword_var = tk.StringVar(value="tony")
+        keyword_entry = ttk.Entry(
+            voice_frame,
+            textvariable=self.voice_keyword_var,
+            width=20
+        )
+        keyword_entry.grid(row=2, column=1, sticky=tk.W, pady=(0, 5))
+
+        ttk.Label(
+            voice_frame,
+            text="(e.g., 'tony', 'computer', 'jarvis')",
+            font=("Arial", 8),
+            foreground="gray"
+        ).grid(row=2, column=2, sticky=tk.W, padx=(10, 0), pady=(0, 5))
+
+        # Timeout configuration
+        ttk.Label(
+            voice_frame,
+            text="Command Timeout:",
+            font=("Arial", 10, "bold")
+        ).grid(row=3, column=0, sticky=tk.W, pady=(5, 5))
+
+        self.voice_timeout_var = tk.DoubleVar(value=3.0)
+        timeout_spinbox = ttk.Spinbox(
+            voice_frame,
+            from_=1.0, to=10.0, increment=0.5,
+            textvariable=self.voice_timeout_var,
+            width=18
+        )
+        timeout_spinbox.grid(row=3, column=1, sticky=tk.W, pady=(5, 5))
+
+        ttk.Label(
+            voice_frame,
+            text="seconds (time to wait for command after keyword)",
+            font=("Arial", 8),
+            foreground="gray"
+        ).grid(row=3, column=2, sticky=tk.W, padx=(10, 0), pady=(5, 5))
+
+        # Sensitivity configuration
+        ttk.Label(
+            voice_frame,
+            text="Detection Sensitivity:",
+            font=("Arial", 10, "bold")
+        ).grid(row=4, column=0, sticky=tk.W, pady=(5, 5))
+
+        self.voice_sensitivity_var = tk.StringVar(value="normal")
+        sensitivity_combo = ttk.Combobox(
+            voice_frame,
+            textvariable=self.voice_sensitivity_var,
+            values=["low", "normal", "high"],
+            state="readonly",
+            width=15
+        )
+        sensitivity_combo.grid(row=4, column=1, sticky=tk.W, pady=(5, 5))
+
+        ttk.Label(
+            voice_frame,
+            text="(low = fewer false positives, high = better detection)",
+            font=("Arial", 8),
+            foreground="gray"
+        ).grid(row=4, column=2, sticky=tk.W, padx=(10, 0), pady=(5, 5))
+
+        # Example commands
+        ttk.Label(
+            voice_frame,
+            text="Example Commands:",
+            font=("Arial", 10, "bold")
+        ).grid(row=5, column=0, sticky=tk.W, pady=(15, 5))
+
+        examples_text = (
+            "• Basic: 'Tony Enter', 'Tony Space', 'Tony Backspace'\n"
+            "• Navigation: 'Tony Up', 'Tony Down', 'Tony Left', 'Tony Right'\n"
+            "• System: 'Tony Copy' (Ctrl+C), 'Tony Paste' (Ctrl+V), 'Tony Save' (Ctrl+S)\n"
+            "• Windows: 'Tony Close' (Alt+F4), 'Tony Minimize', 'Tony Maximize'\n"
+            "• Function: 'Tony F5', 'Tony F11', etc."
+        )
+
+        examples_label = ttk.Label(
+            voice_frame,
+            text=examples_text,
+            font=("Arial", 9),
+            foreground="#333333",
+            justify=tk.LEFT
+        )
+        examples_label.grid(row=5, column=1, columnspan=2, sticky=tk.W, pady=(15, 5))
+
+        # Warning about xdotool
+        warning_label = ttk.Label(
+            voice_frame,
+            text="⚠️ Make sure xdotool is installed: sudo apt install xdotool",
+            font=("Arial", 9, "bold"),
+            foreground="orange"
+        )
+        warning_label.grid(row=6, column=0, columnspan=3, sticky=tk.W, pady=(15, 0))
+
+    def _on_voice_commands_toggle(self):
+        """Handle voice commands enable/disable toggle"""
+        # Could add validation or additional logic here if needed
+        pass
+
     def _create_debug_section(self, parent):
         """Create debug settings section"""
         debug_frame = ttk.LabelFrame(parent, text="Debug Settings", padding="15")
-        debug_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=(15, 0))
+        debug_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=(15, 0))
         debug_frame.columnconfigure(0, weight=1)
 
         # Debug checkbox
@@ -443,6 +581,11 @@ class MainWindow:
         ttk.Label(status_frame, text="Idioma:").grid(row=2, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
         self.language_label = ttk.Label(status_frame, text="Ninguno")
         self.language_label.grid(row=2, column=1, sticky=tk.W, pady=(5, 0))
+
+        # Voice Commands status
+        ttk.Label(status_frame, text="Comandos Voz:").grid(row=3, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.voice_commands_label = ttk.Label(status_frame, text="Deshabilitado", foreground="gray")
+        self.voice_commands_label.grid(row=3, column=1, sticky=tk.W, pady=(5, 0))
 
     def _create_control_buttons(self, parent):
         """Create control buttons"""
@@ -606,6 +749,22 @@ class MainWindow:
         debug_str = self.database.get_setting('debug_enabled', 'false')
         self.debug_var.set(debug_str.lower() in ('true', '1', 'yes'))
 
+        # Load voice commands settings
+        try:
+            voice_settings = self.database.get_voice_command_settings()
+            self.voice_keyword_var.set(voice_settings.get('keyword', 'tony'))
+            self.voice_timeout_var.set(voice_settings.get('timeout', 3.0))
+            self.voice_sensitivity_var.set(voice_settings.get('sensitivity', 'normal'))
+            self.voice_commands_enabled_var.set(voice_settings.get('enabled', False))
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to load voice command settings: {e}")
+            # Set defaults
+            self.voice_keyword_var.set('tony')
+            self.voice_timeout_var.set(3.0)
+            self.voice_sensitivity_var.set('normal')
+            self.voice_commands_enabled_var.set(False)
+
         # Update frame visibility
         self._on_backend_changed()
 
@@ -720,6 +879,29 @@ class MainWindow:
 
             # Save debug flag
             self.database.save_setting('debug_enabled', 'true' if self.debug_var.get() else 'false')
+
+            # Save voice commands settings
+            try:
+                self.database.save_voice_command_settings(
+                    keyword=self.voice_keyword_var.get().strip().lower(),
+                    timeout=self.voice_timeout_var.get(),
+                    sensitivity=self.voice_sensitivity_var.get(),
+                    enabled=self.voice_commands_enabled_var.get()
+                )
+                logger.info("Voice command settings saved")
+
+                # If Whisper backend is active, update its settings
+                if self.controller.current_backend and self.controller.backend_type == 'whisper':
+                    if hasattr(self.controller.current_backend, 'update_voice_command_settings'):
+                        self.controller.current_backend.update_voice_command_settings(
+                            keyword=self.voice_keyword_var.get().strip().lower(),
+                            timeout=self.voice_timeout_var.get(),
+                            sensitivity=self.voice_sensitivity_var.get(),
+                            enabled=self.voice_commands_enabled_var.get()
+                        )
+                        logger.info("Voice command settings applied to active backend")
+            except Exception as e:
+                logger.error(f"Failed to save voice command settings: {e}")
 
             # Reload config to apply changes
             self.config.reload_from_db()
@@ -926,6 +1108,35 @@ class MainWindow:
             else:
                 self.model_label.config(text=f"{self.config.backend.upper()}")
             self.language_label.config(text="Ninguno")
+
+        # Update voice commands status
+        try:
+            if self.controller.current_backend and self.controller.backend_type == 'whisper':
+                if hasattr(self.controller.current_backend, 'get_voice_command_status'):
+                    vc_status = self.controller.current_backend.get_voice_command_status()
+                    if vc_status.get('enabled', False):
+                        keyword = vc_status.get('keyword', 'tony')
+                        if vc_status.get('command_mode_active', False):
+                            remaining = vc_status.get('remaining_timeout', 0)
+                            self.voice_commands_label.config(
+                                text=f"🟡 [{keyword}] Esperando comando ({remaining:.1f}s)",
+                                foreground="orange"
+                            )
+                        else:
+                            self.voice_commands_label.config(
+                                text=f"✓ Activo [{keyword}]",
+                                foreground="green"
+                            )
+                    else:
+                        self.voice_commands_label.config(text="Deshabilitado", foreground="gray")
+                else:
+                    self.voice_commands_label.config(text="Deshabilitado", foreground="gray")
+            else:
+                self.voice_commands_label.config(text="Solo Whisper", foreground="gray")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).debug(f"Error updating voice command status: {e}")
+            self.voice_commands_label.config(text="Deshabilitado", foreground="gray")
 
     def _schedule_status_update(self):
         """Schedule periodic status updates"""

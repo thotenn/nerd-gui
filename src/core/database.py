@@ -70,6 +70,43 @@ class Database:
                 cursor.execute("ALTER TABLE sessions ADD COLUMN whisper_model TEXT")
                 print("Added 'whisper_model' column to sessions table")
 
+            # Create voice command settings table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS voice_command_settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    keyword TEXT NOT NULL DEFAULT 'tony',
+                    timeout_seconds REAL NOT NULL DEFAULT 3.0,
+                    sensitivity TEXT NOT NULL DEFAULT 'normal',
+                    enabled BOOLEAN NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+
+            # Create custom commands table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS custom_commands (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    keys TEXT NOT NULL,
+                    description TEXT,
+                    category TEXT DEFAULT 'Custom',
+                    enabled BOOLEAN NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+
+            # Initialize default voice command settings if not exist
+            cursor.execute("SELECT COUNT(*) FROM voice_command_settings")
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    INSERT INTO voice_command_settings
+                    (keyword, timeout_seconds, sensitivity, enabled, created_at, updated_at)
+                    VALUES ('tony', 3.0, 'normal', 0, ?, ?)
+                """, (datetime.now().isoformat(), datetime.now().isoformat()))
+                print("Initialized default voice command settings")
+
         except Exception as e:
             print(f"Database migration warning: {e}")
     
@@ -309,3 +346,183 @@ class Database:
             True if successful
         """
         return self.save_setting('migration_completed', 'true')
+
+    # Voice command settings methods
+
+    def save_voice_command_settings(self, keyword: str, timeout: float,
+                                   sensitivity: str, enabled: bool):
+        """
+        Save voice command settings.
+
+        Args:
+            keyword: Activation keyword
+            timeout: Command timeout in seconds
+            sensitivity: Detection sensitivity (low/normal/high)
+            enabled: Whether voice commands are enabled
+
+        Returns:
+            True if successful
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Update or insert settings
+            cursor.execute("""
+                INSERT OR REPLACE INTO voice_command_settings
+                (id, keyword, timeout_seconds, sensitivity, enabled, created_at, updated_at)
+                VALUES (
+                    (SELECT id FROM voice_command_settings LIMIT 1),
+                    ?, ?, ?, ?,
+                    COALESCE((SELECT created_at FROM voice_command_settings LIMIT 1), ?),
+                    ?
+                )
+            """, (keyword, timeout, sensitivity, 1 if enabled else 0,
+                  datetime.now().isoformat(), datetime.now().isoformat()))
+
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error saving voice command settings: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_voice_command_settings(self):
+        """
+        Get voice command settings.
+
+        Returns:
+            Dictionary with settings or defaults if not found
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT keyword, timeout_seconds, sensitivity, enabled
+                FROM voice_command_settings
+                ORDER BY id DESC
+                LIMIT 1
+            """)
+
+            result = cursor.fetchone()
+
+            if result:
+                return {
+                    'keyword': result[0],
+                    'timeout': result[1],
+                    'sensitivity': result[2],
+                    'enabled': bool(result[3])
+                }
+
+            # Return defaults if no settings found
+            return {
+                'keyword': 'tony',
+                'timeout': 3.0,
+                'sensitivity': 'normal',
+                'enabled': False
+            }
+        except Exception as e:
+            print(f"Error getting voice command settings: {e}")
+            return {
+                'keyword': 'tony',
+                'timeout': 3.0,
+                'sensitivity': 'normal',
+                'enabled': False
+            }
+        finally:
+            conn.close()
+
+    def save_custom_command(self, name: str, keys: str, description: str,
+                          category: str = 'Custom', enabled: bool = True):
+        """
+        Save a custom voice command.
+
+        Args:
+            name: Command name
+            keys: Keyboard keys (comma-separated)
+            description: Command description
+            category: Command category
+            enabled: Whether command is enabled
+
+        Returns:
+            True if successful
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                INSERT OR REPLACE INTO custom_commands
+                (name, keys, description, category, enabled, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?,
+                    COALESCE((SELECT created_at FROM custom_commands WHERE name = ?), ?),
+                    ?)
+            """, (name, keys, description, category, 1 if enabled else 0,
+                  name, datetime.now().isoformat(), datetime.now().isoformat()))
+
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error saving custom command: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_custom_commands(self):
+        """
+        Get all custom voice commands.
+
+        Returns:
+            List of custom command dictionaries
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT name, keys, description, category, enabled
+                FROM custom_commands
+                ORDER BY name
+            """)
+
+            results = cursor.fetchall()
+            return [
+                {
+                    'name': r[0],
+                    'keys': r[1],
+                    'description': r[2],
+                    'category': r[3],
+                    'enabled': bool(r[4])
+                }
+                for r in results
+            ]
+        except Exception as e:
+            print(f"Error getting custom commands: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def delete_custom_command(self, name: str):
+        """
+        Delete a custom voice command.
+
+        Args:
+            name: Command name to delete
+
+        Returns:
+            True if successful
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("DELETE FROM custom_commands WHERE name = ?", (name,))
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error deleting custom command: {e}")
+            return False
+        finally:
+            conn.close()

@@ -17,6 +17,9 @@ try:
     from src.backends.whisper.audio_capture import AudioCapture
     from src.backends.whisper.transcriber import WhisperTranscriber, TranscriptionWorker
     from src.backends.whisper.keyboard_output import KeyboardOutput, TextProcessor
+    from src.backends.whisper.keyword_detector import KeywordDetector
+    from src.backends.whisper.command_registry import CommandRegistry
+    from src.backends.whisper.command_executor import CommandExecutor
     WHISPER_AVAILABLE = True
     logger.info("Whisper backend components imported successfully")
 except ImportError as e:
@@ -41,7 +44,8 @@ class WhisperBackend(BaseBackend):
                  device_index: Optional[int] = None,
                  silence_duration: float = 1.0,
                  energy_threshold: float = 0.002,
-                 min_audio_length: float = 0.3):
+                 min_audio_length: float = 0.3,
+                 database=None):
         """
         Initialize Whisper backend.
 
@@ -54,6 +58,7 @@ class WhisperBackend(BaseBackend):
             silence_duration: Seconds of silence before processing speech
             energy_threshold: Microphone sensitivity threshold
             min_audio_length: Minimum audio length in seconds to process
+            database: Database instance for voice command settings (optional)
         """
         super().__init__("Whisper")
 
@@ -62,6 +67,7 @@ class WhisperBackend(BaseBackend):
         self.device = device
         self.compute_type = compute_type
         self.sample_rate = sample_rate
+        self.database = database
 
         # VAD configuration
         self.device_index = device_index
@@ -82,6 +88,12 @@ class WhisperBackend(BaseBackend):
         self.audio_capture: Optional[AudioCapture] = None
         self.transcription_worker: Optional[TranscriptionWorker] = None
 
+        # Voice command components
+        self.keyword_detector: Optional[KeywordDetector] = None
+        self.command_registry = None
+        self.command_executor = None
+        self.voice_commands_enabled = False
+
         if not WHISPER_AVAILABLE:
             self._set_status(BackendStatus.ERROR,
                            "Whisper dependencies not installed. Run ./install_whisper_backend.sh")
@@ -97,6 +109,13 @@ class WhisperBackend(BaseBackend):
 
             self.text_processor = TextProcessor()
             self.keyboard_output = KeyboardOutput(on_error=self._on_error)
+
+            # Initialize voice command components
+            self.command_registry = CommandRegistry()
+            self.command_executor = CommandExecutor()
+
+            # Load voice command settings from database if available
+            self._load_voice_command_settings()
 
             # Check dependencies
             self._check_dependencies()
@@ -344,7 +363,7 @@ class WhisperBackend(BaseBackend):
 
     def _on_transcription_result(self, result: Dict[str, Any]):
         """
-        Handle successful transcription.
+        Handle successful transcription with voice command detection.
 
         Args:
             result: Transcription result dictionary
@@ -354,7 +373,92 @@ class WhisperBackend(BaseBackend):
             if not text.strip():
                 return
 
-            # Process the text (capitalization, punctuation, etc.)
+            # Check for voice commands if enabled
+            if self.voice_commands_enabled and self.keyword_detector:
+                # IMPORTANT: Normalize text to lowercase before keyword detection
+                # This prevents the keyword from being written with capital letter
+                text_normalized = text.lower()
+                detection_result = self.keyword_detector.process_text(text_normalized)
+
+                if detection_result.detected_keyword:
+                    # Extract text BEFORE the keyword (if any)
+                    # This ensures we don't lose text like "hola que tal tony enter"
+                    text_before_keyword = self._extract_text_before_keyword(text, self.keyword_detector.keyword)
+
+                    if detection_result.command_candidate:
+                        # We have both keyword and command - execute it
+
+                        # First, type any text that came BEFORE the keyword
+                        text_length = 0
+                        if text_before_keyword.strip():
+                            processed_before = self.text_processor.process_text(text_before_keyword)
+
+                            # Add space before chunk (except for first chunk)
+                            if not self.is_first_chunk:
+                                processed_before = ' ' + processed_before
+                            else:
+                                self.is_first_chunk = False
+
+                            self.keyboard_output.type_text(processed_before, enable_correction=False)
+                            self.total_text_typed += len(processed_before)
+                            text_length = len(processed_before)
+                            logger.debug(f"Typed text before keyword: '{processed_before}'")
+
+                        # IMPORTANT: Wait for text to finish typing before executing command
+                        # xdotool type has a default delay of ~12ms per character
+                        # Add buffer to ensure text completes before command executes
+                        if text_length > 0:
+                            typing_time = (text_length * 0.012) + 0.1  # 12ms per char + 100ms buffer
+                            logger.debug(f"Waiting {typing_time:.2f}s for text to complete before command")
+                            time.sleep(typing_time)
+
+                        # Now execute the command
+                        command = self.command_registry.find_matching_command(
+                            detection_result.command_candidate
+                        )
+
+                        if command:
+                            success = self.command_executor.execute_command(command)
+                            if success:
+                                logger.info(f"Executed voice command: {command.description}")
+                            else:
+                                logger.warning(f"Failed to execute command: {command.description}")
+                        else:
+                            logger.warning(f"Unknown voice command: '{detection_result.command_candidate}'")
+
+                        # Update timestamp
+                        self.last_transcription_time = time.time()
+
+                        # Don't process the keyword/command as text - already handled
+                        return
+                    else:
+                        # Keyword detected but no command yet - wait for next chunk
+                        # BUT FIRST: type any text that came BEFORE the keyword
+                        text_length = 0
+                        if text_before_keyword.strip():
+                            processed_before = self.text_processor.process_text(text_before_keyword)
+
+                            # Add space before chunk (except for first chunk)
+                            if not self.is_first_chunk:
+                                processed_before = ' ' + processed_before
+                            else:
+                                self.is_first_chunk = False
+
+                            self.keyboard_output.type_text(processed_before, enable_correction=False)
+                            self.total_text_typed += len(processed_before)
+                            text_length = len(processed_before)
+                            logger.debug(f"Typed text before keyword: '{processed_before}'")
+
+                            # Wait for text to finish typing
+                            if text_length > 0:
+                                typing_time = (text_length * 0.012) + 0.05  # Shorter buffer since no command follows
+                                logger.debug(f"Waiting {typing_time:.2f}s for text to complete")
+                                time.sleep(typing_time)
+
+                        logger.debug(f"Keyword '{self.keyword_detector.keyword}' detected, waiting for command...")
+                        return
+
+            # Process the text normally (no command detected)
             processed_text = self.text_processor.process_text(text)
 
             # Add space before chunk (except for first chunk)
@@ -473,3 +577,125 @@ class WhisperBackend(BaseBackend):
         if self.transcriber is not None:
             self.transcriber.unload_model()
         logger.info("Whisper backend cleaned up")
+
+    # Voice command methods
+
+    def _extract_text_before_keyword(self, text: str, keyword: str) -> str:
+        """
+        Extract text that appears before the keyword.
+
+        Args:
+            text: Full text (may contain keyword)
+            keyword: Activation keyword to search for
+
+        Returns:
+            Text before keyword, or empty string if keyword is at start
+        """
+        import re
+
+        # Search for keyword with word boundaries (case-insensitive)
+        keyword_pattern = r'\b' + re.escape(keyword.lower()) + r'\b'
+        match = re.search(keyword_pattern, text.lower())
+
+        if match:
+            # Return everything before the keyword
+            return text[:match.start()].strip()
+
+        # Keyword not found (shouldn't happen, but return empty)
+        return ""
+
+    def _load_voice_command_settings(self):
+        """Load voice command settings from database"""
+        if not self.database:
+            logger.debug("No database available for voice command settings")
+            return
+
+        try:
+            # Get settings from database
+            settings = self.database.get_voice_command_settings()
+
+            keyword = settings.get('keyword', 'tony')
+            timeout = settings.get('timeout', 3.0)
+            sensitivity = settings.get('sensitivity', 'normal')
+            enabled = settings.get('enabled', False)
+
+            self.voice_commands_enabled = enabled
+
+            # Initialize keyword detector if enabled
+            if enabled:
+                self.keyword_detector = KeywordDetector(
+                    keyword=keyword,
+                    timeout_seconds=timeout,
+                    sensitivity=sensitivity,
+                    language='es'
+                )
+                logger.info(f"Voice commands enabled with keyword: '{keyword}'")
+            else:
+                self.keyword_detector = None
+                logger.debug("Voice commands disabled")
+
+        except Exception as e:
+            logger.error(f"Failed to load voice command settings: {e}")
+            self.voice_commands_enabled = False
+
+    def update_voice_command_settings(self, keyword: str, timeout: float,
+                                     sensitivity: str, enabled: bool):
+        """
+        Update voice command settings.
+
+        Args:
+            keyword: Activation keyword
+            timeout: Command timeout in seconds
+            sensitivity: Detection sensitivity
+            enabled: Whether voice commands are enabled
+        """
+        try:
+            # Save to database if available
+            if self.database:
+                self.database.save_voice_command_settings(
+                    keyword=keyword,
+                    timeout=timeout,
+                    sensitivity=sensitivity,
+                    enabled=enabled
+                )
+
+            # Update runtime settings
+            self.voice_commands_enabled = enabled
+
+            if enabled:
+                if not self.keyword_detector:
+                    self.keyword_detector = KeywordDetector(
+                        keyword=keyword,
+                        timeout_seconds=timeout,
+                        sensitivity=sensitivity,
+                        language='es'
+                    )
+                else:
+                    self.keyword_detector.update_keyword(keyword)
+                    self.keyword_detector.update_timeout(timeout)
+                    self.keyword_detector.sensitivity = sensitivity
+            else:
+                self.keyword_detector = None
+
+            logger.info(f"Voice command settings updated: keyword='{keyword}', enabled={enabled}")
+
+        except Exception as e:
+            logger.error(f"Failed to update voice command settings: {e}")
+
+    def get_voice_command_status(self) -> dict:
+        """Get current voice command status"""
+        status = {
+            'enabled': self.voice_commands_enabled,
+            'xdotool_available': self.command_executor.xdotool_available if self.command_executor else False
+        }
+
+        if self.keyword_detector:
+            status.update({
+                'keyword': self.keyword_detector.keyword,
+                'timeout': self.keyword_detector.timeout_seconds,
+                'sensitivity': self.keyword_detector.sensitivity,
+                'command_mode_active': self.keyword_detector.is_command_mode_active(),
+                'remaining_timeout': self.keyword_detector.get_remaining_timeout()
+            })
+
+        return status
