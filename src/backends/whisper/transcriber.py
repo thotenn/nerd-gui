@@ -81,6 +81,17 @@ class WhisperTranscriber:
                 logger.info(f"Loading Whisper model '{self.model_size}' on {self.device}...")
                 start_time = time.time()
 
+                # Check CUDA availability before trying to load on GPU
+                if self.device == "cuda":
+                    try:
+                        import torch
+                        if not torch.cuda.is_available():
+                            logger.warning("CUDA requested but not available, falling back to CPU")
+                            self.device = "cpu"
+                            self.compute_type = "float32"
+                    except ImportError:
+                        pass  # torch not available, let WhisperModel handle it
+
                 self.model = WhisperModel(
                     self.model_size,
                     device=self.device,
@@ -88,23 +99,55 @@ class WhisperTranscriber:
                 )
 
                 load_time = time.time() - start_time
-                logger.info(f"Model loaded in {load_time:.2f} seconds")
+                logger.info(f"Model loaded in {load_time:.2f} seconds on {self.device}")
                 self.is_model_loaded = True
                 return True
 
             except Exception as e:
-                logger.error(f"Failed to load Whisper model: {e}")
+                error_msg = str(e)
+                # Log the full error
+                logger.error(f"Failed to load Whisper model: {error_msg}")
+
+                # Check if it's a CUDA memory error
+                if "CUDA out of memory" in error_msg or "out of memory" in error_msg.lower():
+                    # Try to get GPU memory info if available
+                    try:
+                        import torch
+                        if torch.cuda.is_available():
+                            memory_allocated = torch.cuda.memory_allocated() / 1024**3
+                            memory_reserved = torch.cuda.memory_reserved() / 1024**3
+                            logger.error(f"GPU memory status - Allocated: {memory_allocated:.2f} GB, Reserved: {memory_reserved:.2f} GB")
+                    except:
+                        pass
+
+                    # Re-raise with more context
+                    raise RuntimeError(f"CUDA out of memory when loading {self.model_size} model: {error_msg}")
+
                 self.is_model_loaded = False
-                return False
+                raise  # Re-raise the exception for better error handling upstream
 
     def unload_model(self):
         """Unload model to free GPU memory."""
+        import gc
         with self.load_lock:
             if self.model:
                 del self.model
                 self.model = None
                 self.is_model_loaded = False
-                logger.info("Whisper model unloaded")
+
+                # Force garbage collection to free memory
+                gc.collect()
+
+                # Try to clear CUDA cache if available
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                        logger.info("CUDA cache cleared")
+                except ImportError:
+                    pass  # torch not available, that's fine
+
+                logger.info("Whisper model unloaded and memory freed")
 
     def transcribe(self,
                    audio: np.ndarray,

@@ -187,3 +187,125 @@ class Database:
             }
             for r in results
         ]
+
+    # Settings management methods
+
+    def save_setting(self, key, value):
+        """
+        Save or update a setting in the database.
+
+        Args:
+            key: Setting key (e.g., 'backend', 'whisper_model_es')
+            value: Setting value (will be converted to string)
+
+        Returns:
+            True if successful
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Convert value to string for storage
+            value_str = str(value) if value is not None else ""
+
+            cursor.execute("""
+                INSERT OR REPLACE INTO settings (key, value, updated_at)
+                VALUES (?, ?, ?)
+            """, (key, value_str, datetime.now().isoformat()))
+
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error saving setting {key}: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_setting(self, key, default=None):
+        """
+        Get a setting from the database.
+
+        Args:
+            key: Setting key
+            default: Default value if setting doesn't exist
+
+        Returns:
+            Setting value as string, or default if not found
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT value FROM settings WHERE key = ?
+            """, (key,))
+
+            result = cursor.fetchone()
+            return result[0] if result else default
+        except Exception as e:
+            print(f"Error getting setting {key}: {e}")
+            return default
+        finally:
+            conn.close()
+
+    def get_all_settings(self):
+        """
+        Get all settings from the database.
+
+        Returns:
+            Dictionary with all settings (key: value)
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("SELECT key, value FROM settings")
+            results = cursor.fetchall()
+            return {row[0]: row[1] for row in results}
+        except Exception as e:
+            print(f"Error getting all settings: {e}")
+            return {}
+        finally:
+            conn.close()
+
+    def delete_setting(self, key):
+        """
+        Delete a setting from the database.
+
+        Args:
+            key: Setting key to delete
+
+        Returns:
+            True if successful
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("DELETE FROM settings WHERE key = ?", (key,))
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error deleting setting {key}: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def is_migration_complete(self):
+        """
+        Check if configuration migration from .env to database has been completed.
+
+        Returns:
+            True if migration has been done, False otherwise
+        """
+        migration_done = self.get_setting('migration_completed', 'false')
+        return migration_done.lower() in ('true', '1', 'yes')
+
+    def mark_migration_complete(self):
+        """
+        Mark configuration migration as completed.
+
+        Returns:
+            True if successful
+        """
+        return self.save_setting('migration_completed', 'true')
