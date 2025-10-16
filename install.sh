@@ -140,6 +140,8 @@ install_common_dependencies() {
         cmake \
         pkg-config
 
+    print_success "xdotool installed (required for Voice Commands feature)"
+
     print_success "Common dependencies installed"
 }
 
@@ -537,6 +539,12 @@ print_usage() {
         echo -e "  Debug tools:    ${YELLOW}$PROJECT_DIR/debug_tools/${NC}"
     fi
 
+    echo ""
+    echo -e "${BLUE}Voice Commands (Whisper only):${NC}"
+    echo ""
+    echo -e "  ${GREEN}✓${NC} xdotool installed and ready"
+    echo -e "  Enable in Settings → Voice Commands tab"
+    echo -e "  Say: ${YELLOW}'[keyword] [command]'${NC} (e.g., 'Tony Enter')"
     echo ""
     echo -e "${GREEN}Next Steps:${NC}"
     echo ""

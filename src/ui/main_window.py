@@ -576,10 +576,127 @@ class MainWindow:
         )
         warning_label.grid(row=6, column=0, columnspan=3, sticky=tk.W, pady=(15, 0))
 
+        # Separator
+        ttk.Separator(voice_frame, orient=tk.HORIZONTAL).grid(
+            row=7, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(20, 20)
+        )
+
+        # Commands Configuration section
+        ttk.Label(
+            voice_frame,
+            text="Commands Configuration (JSON)",
+            font=("Arial", 11, "bold")
+        ).grid(row=8, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
+
+        # Info text about JSON format
+        json_info_label = ttk.Label(
+            voice_frame,
+            text="ℹ️ Edit the voice commands below in JSON format. Each command has:\n"
+                 "  • keys: List of keyboard keys to press (e.g., [\"Control_L\", \"c\"] for Ctrl+C)\n"
+                 "  • description: Human-readable description\n"
+                 "  • category: Category name (Basic, Navigation, System, Function, Media, Custom)\n"
+                 "  • enabled: true/false to enable/disable the command\n"
+                 "xdotool key names: Return, space, BackSpace, Control_L, Alt_L, Shift_L, etc.",
+            font=("Arial", 9),
+            foreground="#555555",
+            justify=tk.LEFT
+        )
+        json_info_label.grid(row=9, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
+
+        # JSON textarea with scrollbar
+        json_frame = ttk.Frame(voice_frame)
+        json_frame.grid(row=10, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        json_frame.columnconfigure(0, weight=1)
+
+        # Create Text widget with scrollbar
+        json_scrollbar = ttk.Scrollbar(json_frame, orient=tk.VERTICAL)
+        self.commands_json_text = tk.Text(
+            json_frame,
+            height=20,
+            width=80,
+            font=("Courier", 9),
+            wrap=tk.NONE,
+            yscrollcommand=json_scrollbar.set
+        )
+        json_scrollbar.config(command=self.commands_json_text.yview)
+
+        self.commands_json_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        json_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+
+        json_frame.rowconfigure(0, weight=1)
+
+        # Buttons frame
+        json_buttons_frame = ttk.Frame(voice_frame)
+        json_buttons_frame.grid(row=11, column=0, columnspan=3, sticky=tk.W, pady=(5, 0))
+
+        # Reset to Defaults button
+        reset_btn = ttk.Button(
+            json_buttons_frame,
+            text="↺ Reset to Defaults",
+            command=self._on_reset_commands_to_defaults,
+            width=20
+        )
+        reset_btn.grid(row=0, column=0, padx=(0, 10))
+
+        # Info about resetting
+        ttk.Label(
+            json_buttons_frame,
+            text="(Restores the original 44 default commands)",
+            font=("Arial", 8),
+            foreground="gray"
+        ).grid(row=0, column=1, sticky=tk.W)
+
     def _on_voice_commands_toggle(self):
         """Handle voice commands enable/disable toggle"""
         # Could add validation or additional logic here if needed
         pass
+
+    def _on_reset_commands_to_defaults(self):
+        """Reset voice commands to default configuration"""
+        import json
+        from pathlib import Path
+        from tkinter import messagebox
+
+        # Confirm with user
+        result = messagebox.askyesno(
+            "Reset to Defaults",
+            "Are you sure you want to reset all voice commands to the default configuration?\n\n"
+            "This will remove any custom commands you have added.",
+            icon='warning'
+        )
+
+        if not result:
+            return
+
+        try:
+            # Load default commands from JSON file
+            default_file = Path(__file__).parent.parent / 'backends' / 'whisper' / 'default_commands.json'
+            if default_file.exists():
+                with open(default_file, 'r') as f:
+                    default_commands = json.load(f)
+
+                # Format with 2-space indentation
+                json_text = json.dumps(default_commands, indent=2)
+
+                # Update textarea
+                self.commands_json_text.delete('1.0', tk.END)
+                self.commands_json_text.insert('1.0', json_text)
+
+                messagebox.showinfo(
+                    "Success",
+                    "Commands have been reset to defaults.\n\n"
+                    "Click 'Save' to apply these changes."
+                )
+            else:
+                messagebox.showerror(
+                    "Error",
+                    f"Default commands file not found:\n{default_file}"
+                )
+        except Exception as e:
+            messagebox.showerror(
+                "Error",
+                f"Failed to reset commands:\n{str(e)}"
+            )
 
     def _create_debug_section(self, parent):
         """Create debug settings section"""
@@ -833,6 +950,33 @@ class MainWindow:
             self.voice_sensitivity_var.set('normal')
             self.voice_commands_enabled_var.set(False)
 
+        # Load voice commands JSON
+        try:
+            import json
+            from pathlib import Path
+
+            # Try to load from database first
+            commands_json = self.database.get_commands_json()
+
+            if not commands_json:
+                # Load defaults from file
+                default_file = Path(__file__).parent.parent / 'backends' / 'whisper' / 'default_commands.json'
+                if default_file.exists():
+                    with open(default_file, 'r') as f:
+                        commands_data = json.load(f)
+                    commands_json = json.dumps(commands_data, indent=2)
+                else:
+                    commands_json = "{}"
+
+            # Update textarea
+            self.commands_json_text.delete('1.0', tk.END)
+            self.commands_json_text.insert('1.0', commands_json)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to load commands JSON: {e}")
+            self.commands_json_text.delete('1.0', tk.END)
+            self.commands_json_text.insert('1.0', "{}")
+
         # Update frame visibility
         self._on_backend_changed()
 
@@ -947,6 +1091,45 @@ class MainWindow:
 
             # Save debug flag
             self.database.save_setting('debug_enabled', 'true' if self.debug_var.get() else 'false')
+
+            # Validate and save commands JSON
+            try:
+                import json
+
+                # Get JSON text from textarea
+                commands_json_text = self.commands_json_text.get('1.0', tk.END).strip()
+
+                # Validate JSON format
+                try:
+                    json.loads(commands_json_text)
+                except json.JSONDecodeError as e:
+                    messagebox.showerror(
+                        "Invalid JSON",
+                        f"Commands JSON is not valid:\n\n{str(e)}\n\n"
+                        "Please fix the JSON syntax before saving."
+                    )
+                    return
+
+                # Save commands JSON to database
+                self.database.save_commands_json(commands_json_text)
+                logger.info("Commands JSON saved to database")
+
+                # Update Whisper backend's command registry if active
+                if self.controller.current_backend and self.controller.backend_type == 'whisper':
+                    if hasattr(self.controller.current_backend, 'command_registry'):
+                        success = self.controller.current_backend.command_registry.update_from_json(commands_json_text)
+                        if success:
+                            logger.info("Commands updated in active Whisper backend")
+                        else:
+                            logger.warning("Failed to update commands in active backend")
+
+            except Exception as e:
+                logger.error(f"Failed to save commands JSON: {e}")
+                messagebox.showerror(
+                    "Error",
+                    f"Failed to save commands JSON:\n{str(e)}"
+                )
+                return
 
             # Save voice commands settings
             try:

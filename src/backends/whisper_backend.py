@@ -8,18 +8,18 @@ with real-time audio capture and keyboard output.
 import logging
 import time
 from typing import Optional, List, Dict, Any
-from src.backends.base_backend import BaseBackend, BackendStatus
+from .base_backend import BaseBackend, BackendStatus
 
 logger = logging.getLogger(__name__)
 
 # Try to import Whisper components
 try:
-    from src.backends.whisper.audio_capture import AudioCapture
-    from src.backends.whisper.transcriber import WhisperTranscriber, TranscriptionWorker
-    from src.backends.whisper.keyboard_output import KeyboardOutput, TextProcessor
-    from src.backends.whisper.keyword_detector import KeywordDetector
-    from src.backends.whisper.command_registry import CommandRegistry
-    from src.backends.whisper.command_executor import CommandExecutor
+    from .whisper.audio_capture import AudioCapture
+    from .whisper.transcriber import WhisperTranscriber, TranscriptionWorker
+    from .whisper.keyboard_output import KeyboardOutput, TextProcessor
+    from .whisper.keyword_detector import KeywordDetector
+    from .whisper.command_registry import CommandRegistry
+    from .whisper.command_executor import CommandExecutor
     WHISPER_AVAILABLE = True
     logger.info("Whisper backend components imported successfully")
 except ImportError as e:
@@ -111,7 +111,7 @@ class WhisperBackend(BaseBackend):
             self.keyboard_output = KeyboardOutput(on_error=self._on_error)
 
             # Initialize voice command components
-            self.command_registry = CommandRegistry()
+            self.command_registry = CommandRegistry(database=self.database)
             self.command_executor = CommandExecutor()
 
             # Load voice command settings from database if available

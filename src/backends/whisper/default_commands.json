@@ -1,0 +1,266 @@
+{
+  "enter": {
+    "keys": ["Return"],
+    "description": "Press Enter key",
+    "category": "Basic",
+    "enabled": true
+  },
+  "space": {
+    "keys": ["space"],
+    "description": "Press Space key",
+    "category": "Basic",
+    "enabled": true
+  },
+  "backspace": {
+    "keys": ["BackSpace"],
+    "description": "Press Backspace key",
+    "category": "Basic",
+    "enabled": true
+  },
+  "delete": {
+    "keys": ["Delete"],
+    "description": "Press Delete key",
+    "category": "Basic",
+    "enabled": true
+  },
+  "escape": {
+    "keys": ["Escape"],
+    "description": "Press Escape key",
+    "category": "Basic",
+    "enabled": true
+  },
+  "tab": {
+    "keys": ["Tab"],
+    "description": "Press Tab key",
+    "category": "Basic",
+    "enabled": true
+  },
+  "home": {
+    "keys": ["Home"],
+    "description": "Press Home key",
+    "category": "Basic",
+    "enabled": true
+  },
+  "end": {
+    "keys": ["End"],
+    "description": "Press End key",
+    "category": "Basic",
+    "enabled": true
+  },
+  "pageup": {
+    "keys": ["Prior"],
+    "description": "Press Page Up key",
+    "category": "Basic",
+    "enabled": true
+  },
+  "pagedown": {
+    "keys": ["Next"],
+    "description": "Press Page Down key",
+    "category": "Basic",
+    "enabled": true
+  },
+  "print": {
+    "keys": ["Print"],
+    "description": "Press Print Screen key",
+    "category": "Basic",
+    "enabled": true
+  },
+  "up": {
+    "keys": ["Up"],
+    "description": "Press Up arrow key",
+    "category": "Navigation",
+    "enabled": true
+  },
+  "down": {
+    "keys": ["Down"],
+    "description": "Press Down arrow key",
+    "category": "Navigation",
+    "enabled": true
+  },
+  "left": {
+    "keys": ["Left"],
+    "description": "Press Left arrow key",
+    "category": "Navigation",
+    "enabled": true
+  },
+  "right": {
+    "keys": ["Right"],
+    "description": "Press Right arrow key",
+    "category": "Navigation",
+    "enabled": true
+  },
+  "copy": {
+    "keys": ["Control_L", "c"],
+    "description": "Copy (Ctrl+C)",
+    "category": "System",
+    "enabled": true
+  },
+  "paste": {
+    "keys": ["Control_L", "v"],
+    "description": "Paste (Ctrl+V)",
+    "category": "System",
+    "enabled": true
+  },
+  "cut": {
+    "keys": ["Control_L", "x"],
+    "description": "Cut (Ctrl+X)",
+    "category": "System",
+    "enabled": true
+  },
+  "save": {
+    "keys": ["Control_L", "s"],
+    "description": "Save (Ctrl+S)",
+    "category": "System",
+    "enabled": true
+  },
+  "selectall": {
+    "keys": ["Control_L", "a"],
+    "description": "Select All (Ctrl+A)",
+    "category": "System",
+    "enabled": true
+  },
+  "undo": {
+    "keys": ["Control_L", "z"],
+    "description": "Undo (Ctrl+Z)",
+    "category": "System",
+    "enabled": true
+  },
+  "redo": {
+    "keys": ["Control_L", "y"],
+    "description": "Redo (Ctrl+Y)",
+    "category": "System",
+    "enabled": true
+  },
+  "find": {
+    "keys": ["Control_L", "f"],
+    "description": "Find (Ctrl+F)",
+    "category": "System",
+    "enabled": true
+  },
+  "close": {
+    "keys": ["Alt_L", "F4"],
+    "description": "Close window (Alt+F4)",
+    "category": "System",
+    "enabled": true
+  },
+  "minimize": {
+    "keys": ["Alt_L", "F9"],
+    "description": "Minimize window (Alt+F9)",
+    "category": "System",
+    "enabled": true
+  },
+  "maximize": {
+    "keys": ["Alt_L", "F10"],
+    "description": "Maximize window (Alt+F10)",
+    "category": "System",
+    "enabled": true
+  },
+  "f1": {
+    "keys": ["F1"],
+    "description": "Press F1 key",
+    "category": "Function",
+    "enabled": true
+  },
+  "f2": {
+    "keys": ["F2"],
+    "description": "Press F2 key",
+    "category": "Function",
+    "enabled": true
+  },
+  "f3": {
+    "keys": ["F3"],
+    "description": "Press F3 key",
+    "category": "Function",
+    "enabled": true
+  },
+  "f4": {
+    "keys": ["F4"],
+    "description": "Press F4 key",
+    "category": "Function",
+    "enabled": true
+  },
+  "f5": {
+    "keys": ["F5"],
+    "description": "Press F5 key",
+    "category": "Function",
+    "enabled": true
+  },
+  "f6": {
+    "keys": ["F6"],
+    "description": "Press F6 key",
+    "category": "Function",
+    "enabled": true
+  },
+  "f7": {
+    "keys": ["F7"],
+    "description": "Press F7 key",
+    "category": "Function",
+    "enabled": true
+  },
+  "f8": {
+    "keys": ["F8"],
+    "description": "Press F8 key",
+    "category": "Function",
+    "enabled": true
+  },
+  "f9": {
+    "keys": ["F9"],
+    "description": "Press F9 key",
+    "category": "Function",
+    "enabled": true
+  },
+  "f10": {
+    "keys": ["F10"],
+    "description": "Press F10 key",
+    "category": "Function",
+    "enabled": true
+  },
+  "f11": {
+    "keys": ["F11"],
+    "description": "Press F11 key",
+    "category": "Function",
+    "enabled": true
+  },
+  "f12": {
+    "keys": ["F12"],
+    "description": "Press F12 key",
+    "category": "Function",
+    "enabled": true
+  },
+  "playpause": {
+    "keys": ["XF86AudioPlay"],
+    "description": "Play/Pause media",
+    "category": "Media",
+    "enabled": true
+  },
+  "next": {
+    "keys": ["XF86AudioNext"],
+    "description": "Next track",
+    "category": "Media",
+    "enabled": true
+  },
+  "previous": {
+    "keys": ["XF86AudioPrev"],
+    "description": "Previous track",
+    "category": "Media",
+    "enabled": true
+  },
+  "mute": {
+    "keys": ["XF86AudioMute"],
+    "description": "Mute audio",
+    "category": "Media",
+    "enabled": true
+  },
+  "volumedown": {
+    "keys": ["XF86AudioLowerVolume"],
+    "description": "Volume down",
+    "category": "Media",
+    "enabled": true
+  },
+  "volumeup": {
+    "keys": ["XF86AudioRaiseVolume"],
+    "description": "Volume up",
+    "category": "Media",
+    "enabled": true
+  }
+}

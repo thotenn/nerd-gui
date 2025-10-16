@@ -11,7 +11,7 @@ import time
 import os
 from typing import Optional, List, Dict, Any
 from pathlib import Path
-from src.backends.base_backend import BaseBackend, BackendStatus
+from .base_backend import BaseBackend, BackendStatus
 
 logger = logging.getLogger(__name__)
 

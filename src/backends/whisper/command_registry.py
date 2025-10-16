@@ -5,6 +5,8 @@ Registry of available voice commands and their keyboard actions.
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 import logging
+import json
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -22,83 +24,81 @@ class CommandAction:
 class CommandRegistry:
     """Registry of voice commands and their keyboard mappings"""
 
-    def __init__(self):
+    def __init__(self, database=None):
+        """
+        Initialize command registry.
+
+        Args:
+            database: Database instance to load/save commands (optional)
+        """
+        self.database = database
         self.commands: Dict[str, CommandAction] = {}
-        self._register_builtin_commands()
+        self._load_commands()
 
-    def _register_builtin_commands(self):
-        """Register built-in commands"""
+    def _load_commands(self):
+        """Load commands from database or default JSON file"""
+        try:
+            # Try to load from database first
+            if self.database:
+                commands_json = self.database.get_commands_json()
+                if commands_json:
+                    logger.info("Loading commands from database")
+                    self._load_from_json_string(commands_json)
+                    return
 
-        # Basic commands
-        basic_commands = {
-            'enter': CommandAction(['Return'], 'Press Enter key', 'Basic'),
-            'space': CommandAction(['space'], 'Press Space key', 'Basic'),
-            'backspace': CommandAction(['BackSpace'], 'Press Backspace key', 'Basic'),
-            'delete': CommandAction(['Delete'], 'Press Delete key', 'Basic'),
-            'escape': CommandAction(['Escape'], 'Press Escape key', 'Basic'),
-            'tab': CommandAction(['Tab'], 'Press Tab key', 'Basic'),
-            'home': CommandAction(['Home'], 'Press Home key', 'Basic'),
-            'end': CommandAction(['End'], 'Press End key', 'Basic'),
-            'pageup': CommandAction(['Prior'], 'Press Page Up key', 'Basic'),
-            'pagedown': CommandAction(['Next'], 'Press Page Down key', 'Basic'),
-            'print': CommandAction(['Print'], 'Press Print Screen key', 'Basic'),
-        }
+            # If no database or no saved commands, load defaults
+            logger.info("Loading default commands from JSON file")
+            self._load_default_commands()
 
-        # Navigation commands
-        nav_commands = {
-            'up': CommandAction(['Up'], 'Press Up arrow key', 'Navigation'),
-            'down': CommandAction(['Down'], 'Press Down arrow key', 'Navigation'),
-            'left': CommandAction(['Left'], 'Press Left arrow key', 'Navigation'),
-            'right': CommandAction(['Right'], 'Press Right arrow key', 'Navigation'),
-        }
+        except Exception as e:
+            logger.error(f"Error loading commands: {e}")
+            logger.info("Falling back to default commands")
+            self._load_default_commands()
 
-        # System commands
-        system_commands = {
-            'copy': CommandAction(['Control_L', 'c'], 'Copy (Ctrl+C)', 'System'),
-            'paste': CommandAction(['Control_L', 'v'], 'Paste (Ctrl+V)', 'System'),
-            'cut': CommandAction(['Control_L', 'x'], 'Cut (Ctrl+X)', 'System'),
-            'save': CommandAction(['Control_L', 's'], 'Save (Ctrl+S)', 'System'),
-            'selectall': CommandAction(['Control_L', 'a'], 'Select All (Ctrl+A)', 'System'),
-            'undo': CommandAction(['Control_L', 'z'], 'Undo (Ctrl+Z)', 'System'),
-            'redo': CommandAction(['Control_L', 'y'], 'Redo (Ctrl+Y)', 'System'),
-            'find': CommandAction(['Control_L', 'f'], 'Find (Ctrl+F)', 'System'),
-            'close': CommandAction(['Alt_L', 'F4'], 'Close window (Alt+F4)', 'System'),
-            'minimize': CommandAction(['Alt_L', 'F9'], 'Minimize window (Alt+F9)', 'System'),
-            'maximize': CommandAction(['Alt_L', 'F10'], 'Maximize window (Alt+F10)', 'System'),
-        }
+    def _load_default_commands(self):
+        """Load default commands from JSON file"""
+        default_file = self.get_default_commands_path()
+        if default_file.exists():
+            with open(default_file, 'r') as f:
+                commands_data = json.load(f)
+                self._load_from_dict(commands_data)
+        else:
+            logger.error(f"Default commands file not found: {default_file}")
 
-        # Function keys
-        function_commands = {
-            'f1': CommandAction(['F1'], 'Press F1 key', 'Function'),
-            'f2': CommandAction(['F2'], 'Press F2 key', 'Function'),
-            'f3': CommandAction(['F3'], 'Press F3 key', 'Function'),
-            'f4': CommandAction(['F4'], 'Press F4 key', 'Function'),
-            'f5': CommandAction(['F5'], 'Press F5 key', 'Function'),
-            'f6': CommandAction(['F6'], 'Press F6 key', 'Function'),
-            'f7': CommandAction(['F7'], 'Press F7 key', 'Function'),
-            'f8': CommandAction(['F8'], 'Press F8 key', 'Function'),
-            'f9': CommandAction(['F9'], 'Press F9 key', 'Function'),
-            'f10': CommandAction(['F10'], 'Press F10 key', 'Function'),
-            'f11': CommandAction(['F11'], 'Press F11 key', 'Function'),
-            'f12': CommandAction(['F12'], 'Press F12 key', 'Function'),
-        }
+    def _load_from_json_string(self, json_string: str):
+        """Load commands from JSON string"""
+        commands_data = json.loads(json_string)
+        self._load_from_dict(commands_data)
 
-        # Media commands (if supported)
-        media_commands = {
-            'playpause': CommandAction(['XF86AudioPlay'], 'Play/Pause media', 'Media'),
-            'next': CommandAction(['XF86AudioNext'], 'Next track', 'Media'),
-            'previous': CommandAction(['XF86AudioPrev'], 'Previous track', 'Media'),
-            'mute': CommandAction(['XF86AudioMute'], 'Mute audio', 'Media'),
-            'volumedown': CommandAction(['XF86AudioLowerVolume'], 'Volume down', 'Media'),
-            'volumeup': CommandAction(['XF86AudioRaiseVolume'], 'Volume up', 'Media'),
-        }
+    def _load_from_dict(self, commands_data: Dict):
+        """Load commands from dictionary"""
+        self.commands.clear()
+        for name, data in commands_data.items():
+            command = CommandAction(
+                keys=data['keys'],
+                description=data.get('description', ''),
+                category=data.get('category', 'Custom'),
+                enabled=data.get('enabled', True),
+                custom=data.get('custom', False)
+            )
+            self.commands[name.lower()] = command
+        logger.info(f"Loaded {len(self.commands)} commands")
 
-        # Register all commands
-        self.commands.update(basic_commands)
-        self.commands.update(nav_commands)
-        self.commands.update(system_commands)
-        self.commands.update(function_commands)
-        self.commands.update(media_commands)
+    @staticmethod
+    def get_default_commands_path() -> Path:
+        """Get path to default commands JSON file"""
+        return Path(__file__).parent / 'default_commands.json'
+
+    def reset_to_defaults(self):
+        """Reset commands to default values"""
+        logger.info("Resetting commands to defaults")
+        self._load_default_commands()
+
+        # Save to database if available
+        if self.database:
+            commands_json = self.export_commands_json()
+            self.database.save_commands_json(commands_json)
+            logger.info("Default commands saved to database")
 
     def register_command(self,
                         name: str,
@@ -212,7 +212,7 @@ class CommandRegistry:
         return sorted(suggestions)[:10]  # Limit to 10 suggestions
 
     def export_commands(self) -> Dict[str, Dict]:
-        """Export commands configuration"""
+        """Export commands configuration as dictionary"""
         return {
             name: {
                 'keys': cmd.keys,
@@ -223,6 +223,45 @@ class CommandRegistry:
             }
             for name, cmd in self.commands.items()
         }
+
+    def export_commands_json(self, indent=2) -> str:
+        """Export commands configuration as JSON string"""
+        commands_dict = {}
+        for name, cmd in self.commands.items():
+            commands_dict[name] = {
+                'keys': cmd.keys,
+                'description': cmd.description,
+                'category': cmd.category,
+                'enabled': cmd.enabled
+            }
+        return json.dumps(commands_dict, indent=indent)
+
+    def update_from_json(self, json_string: str):
+        """
+        Update commands from JSON string.
+
+        Args:
+            json_string: JSON string with commands configuration
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            commands_data = json.loads(json_string)
+            self._load_from_dict(commands_data)
+
+            # Save to database if available
+            if self.database:
+                self.database.save_commands_json(json_string)
+                logger.info("Commands updated and saved to database")
+
+            return True
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Error updating commands from JSON: {e}")
+            return False
 
     def import_commands(self, commands_data: Dict[str, Dict]):
         """Import commands configuration"""

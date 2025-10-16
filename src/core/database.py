@@ -526,3 +526,24 @@ class Database:
             return False
         finally:
             conn.close()
+
+    def save_commands_json(self, commands_json: str):
+        """
+        Save complete commands configuration as JSON string.
+
+        Args:
+            commands_json: JSON string with all commands
+
+        Returns:
+            True if successful
+        """
+        return self.save_setting('voice_commands_json', commands_json)
+
+    def get_commands_json(self):
+        """
+        Get complete commands configuration as JSON string.
+
+        Returns:
+            JSON string with commands, or None if not found
+        """
+        return self.get_setting('voice_commands_json', None)
