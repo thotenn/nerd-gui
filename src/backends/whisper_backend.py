@@ -426,6 +426,17 @@ class WhisperBackend(BaseBackend):
                         else:
                             logger.warning(f"Unknown voice command: '{detection_result.command_candidate}'")
 
+                        # Type remaining text if present (text after the command)
+                        if detection_result.remaining_text:
+                            remaining_text = detection_result.remaining_text.strip()
+                            if remaining_text:
+                                processed_remaining = self.text_processor.process_text(remaining_text)
+                                # Add space before remaining text
+                                processed_remaining = ' ' + processed_remaining
+                                self.keyboard_output.type_text(processed_remaining, enable_correction=False)
+                                self.total_text_typed += len(processed_remaining)
+                                logger.info(f"Typed remaining text after command: '{processed_remaining}'")
+
                         # Update timestamp
                         self.last_transcription_time = time.time()
 
@@ -618,6 +629,7 @@ class WhisperBackend(BaseBackend):
             timeout = settings.get('timeout', 3.0)
             sensitivity = settings.get('sensitivity', 'normal')
             enabled = settings.get('enabled', False)
+            max_command_words = settings.get('max_command_words', 1)
 
             self.voice_commands_enabled = enabled
 
@@ -627,9 +639,11 @@ class WhisperBackend(BaseBackend):
                     keyword=keyword,
                     timeout_seconds=timeout,
                     sensitivity=sensitivity,
-                    language='es'
+                    language='es',
+                    max_command_words=max_command_words,
+                    command_registry=self.command_registry
                 )
-                logger.info(f"Voice commands enabled with keyword: '{keyword}'")
+                logger.info(f"Voice commands enabled with keyword: '{keyword}', max_command_words: {max_command_words}")
             else:
                 self.keyword_detector = None
                 logger.debug("Voice commands disabled")
@@ -639,7 +653,8 @@ class WhisperBackend(BaseBackend):
             self.voice_commands_enabled = False
 
     def update_voice_command_settings(self, keyword: str, timeout: float,
-                                     sensitivity: str, enabled: bool):
+                                     sensitivity: str, enabled: bool,
+                                     max_command_words: int = 1):
         """
         Update voice command settings.
 
@@ -648,6 +663,7 @@ class WhisperBackend(BaseBackend):
             timeout: Command timeout in seconds
             sensitivity: Detection sensitivity
             enabled: Whether voice commands are enabled
+            max_command_words: Maximum words for multi-word commands (1-5)
         """
         try:
             # Save to database if available
@@ -656,7 +672,8 @@ class WhisperBackend(BaseBackend):
                     keyword=keyword,
                     timeout=timeout,
                     sensitivity=sensitivity,
-                    enabled=enabled
+                    enabled=enabled,
+                    max_command_words=max_command_words
                 )
 
             # Update runtime settings
@@ -668,16 +685,19 @@ class WhisperBackend(BaseBackend):
                         keyword=keyword,
                         timeout_seconds=timeout,
                         sensitivity=sensitivity,
-                        language='es'
+                        language='es',
+                        max_command_words=max_command_words,
+                        command_registry=self.command_registry
                     )
                 else:
                     self.keyword_detector.update_keyword(keyword)
                     self.keyword_detector.update_timeout(timeout)
                     self.keyword_detector.sensitivity = sensitivity
+                    self.keyword_detector.max_command_words = max(1, min(5, max_command_words))
             else:
                 self.keyword_detector = None
 
-            logger.info(f"Voice command settings updated: keyword='{keyword}', enabled={enabled}")
+            logger.info(f"Voice command settings updated: keyword='{keyword}', enabled={enabled}, max_command_words={max_command_words}")
 
         except Exception as e:
             logger.error(f"Failed to update voice command settings: {e}")

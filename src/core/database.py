@@ -97,13 +97,25 @@ class Database:
                 )
             """)
 
+            # Check if max_command_words column exists
+            cursor.execute("PRAGMA table_info(voice_command_settings)")
+            vcs_columns = [row[1] for row in cursor.fetchall()]
+
+            if 'max_command_words' not in vcs_columns:
+                # Add max_command_words column
+                cursor.execute("""
+                    ALTER TABLE voice_command_settings
+                    ADD COLUMN max_command_words INTEGER NOT NULL DEFAULT 1
+                """)
+                print("Added 'max_command_words' column to voice_command_settings table")
+
             # Initialize default voice command settings if not exist
             cursor.execute("SELECT COUNT(*) FROM voice_command_settings")
             if cursor.fetchone()[0] == 0:
                 cursor.execute("""
                     INSERT INTO voice_command_settings
-                    (keyword, timeout_seconds, sensitivity, enabled, created_at, updated_at)
-                    VALUES ('tony', 3.0, 'normal', 0, ?, ?)
+                    (keyword, timeout_seconds, sensitivity, enabled, max_command_words, created_at, updated_at)
+                    VALUES ('tony', 3.0, 'normal', 0, 1, ?, ?)
                 """, (datetime.now().isoformat(), datetime.now().isoformat()))
                 print("Initialized default voice command settings")
 
@@ -350,7 +362,8 @@ class Database:
     # Voice command settings methods
 
     def save_voice_command_settings(self, keyword: str, timeout: float,
-                                   sensitivity: str, enabled: bool):
+                                   sensitivity: str, enabled: bool,
+                                   max_command_words: int = 1):
         """
         Save voice command settings.
 
@@ -359,6 +372,7 @@ class Database:
             timeout: Command timeout in seconds
             sensitivity: Detection sensitivity (low/normal/high)
             enabled: Whether voice commands are enabled
+            max_command_words: Maximum words for multi-word commands (1-5)
 
         Returns:
             True if successful
@@ -370,14 +384,14 @@ class Database:
             # Update or insert settings
             cursor.execute("""
                 INSERT OR REPLACE INTO voice_command_settings
-                (id, keyword, timeout_seconds, sensitivity, enabled, created_at, updated_at)
+                (id, keyword, timeout_seconds, sensitivity, enabled, max_command_words, created_at, updated_at)
                 VALUES (
                     (SELECT id FROM voice_command_settings LIMIT 1),
-                    ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?,
                     COALESCE((SELECT created_at FROM voice_command_settings LIMIT 1), ?),
                     ?
                 )
-            """, (keyword, timeout, sensitivity, 1 if enabled else 0,
+            """, (keyword, timeout, sensitivity, 1 if enabled else 0, max_command_words,
                   datetime.now().isoformat(), datetime.now().isoformat()))
 
             conn.commit()
@@ -400,7 +414,7 @@ class Database:
 
         try:
             cursor.execute("""
-                SELECT keyword, timeout_seconds, sensitivity, enabled
+                SELECT keyword, timeout_seconds, sensitivity, enabled, max_command_words
                 FROM voice_command_settings
                 ORDER BY id DESC
                 LIMIT 1
@@ -413,7 +427,8 @@ class Database:
                     'keyword': result[0],
                     'timeout': result[1],
                     'sensitivity': result[2],
-                    'enabled': bool(result[3])
+                    'enabled': bool(result[3]),
+                    'max_command_words': result[4] if len(result) > 4 else 1
                 }
 
             # Return defaults if no settings found
@@ -421,7 +436,8 @@ class Database:
                 'keyword': 'tony',
                 'timeout': 3.0,
                 'sensitivity': 'normal',
-                'enabled': False
+                'enabled': False,
+                'max_command_words': 1
             }
         except Exception as e:
             print(f"Error getting voice command settings: {e}")
@@ -429,7 +445,8 @@ class Database:
                 'keyword': 'tony',
                 'timeout': 3.0,
                 'sensitivity': 'normal',
-                'enabled': False
+                'enabled': False,
+                'max_command_words': 1
             }
         finally:
             conn.close()

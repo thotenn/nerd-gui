@@ -53,6 +53,12 @@
     "category": "Basic",
     "enabled": true
   },
+  "enter doble": {
+    "keys": ["Return", "Return"],
+    "description": "Double Enter (Spanish: enter doble)",
+    "category": "Basic",
+    "enabled": true
+  },
   "pageup": {
     "keys": ["Prior"],
     "description": "Press Page Up key",

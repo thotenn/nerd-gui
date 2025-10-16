@@ -25,6 +25,7 @@ class DetectionResult:
     """Result of keyword detection"""
     detected_keyword: bool
     command_candidate: Optional[str] = None
+    remaining_text: Optional[str] = None  # Text after command to be typed
     confidence: float = 0.0
     mode: DetectionMode = DetectionMode.NORMAL
 
@@ -36,7 +37,9 @@ class KeywordDetector:
                  keyword: str = "tony",
                  timeout_seconds: float = 3.0,
                  sensitivity: str = "normal",
-                 language: str = "es"):
+                 language: str = "es",
+                 max_command_words: int = 1,
+                 command_registry=None):
         """
         Initialize keyword detector.
 
@@ -45,11 +48,15 @@ class KeywordDetector:
             timeout_seconds: Time to wait for command after keyword
             sensitivity: Detection sensitivity (low/normal/high)
             language: Language code
+            max_command_words: Maximum words to analyze for command (1-5)
+            command_registry: CommandRegistry instance for multi-word lookup
         """
         self.keyword = keyword.lower().strip()
         self.timeout_seconds = timeout_seconds
         self.sensitivity = sensitivity
         self.language = language
+        self.max_command_words = max(1, min(5, max_command_words))  # Limit 1-5
+        self.command_registry = command_registry
 
         # State management
         self.current_mode = DetectionMode.NORMAL
@@ -98,9 +105,9 @@ class KeywordDetector:
                 self.keyword_detected_time = current_time
 
                 # Look for command immediately after keyword
-                command = self._extract_command_after_keyword(text_clean)
-                if command:
-                    return self._process_command(command)
+                result = self._extract_command_with_remaining(text_clean, after_keyword=True)
+                if result and result['command']:
+                    return self._process_command(result['command'], result.get('remaining_text'))
                 else:
                     return DetectionResult(
                         detected_keyword=True,
@@ -110,9 +117,9 @@ class KeywordDetector:
 
         # Check for command in active mode
         elif self.current_mode == DetectionMode.COMMAND_ACTIVE:
-            command = self._extract_command(text_clean)
-            if command:
-                return self._process_command(command)
+            result = self._extract_command_with_remaining(text_clean, after_keyword=False)
+            if result and result['command']:
+                return self._process_command(result['command'], result.get('remaining_text'))
 
         # No detection
         return DetectionResult(detected_keyword=False, mode=self.current_mode)
@@ -122,44 +129,108 @@ class KeywordDetector:
         matches = self.keyword_regex.findall(text)
         return len(matches) > 0
 
-    def _extract_command_after_keyword(self, text: str) -> Optional[str]:
-        """Extract command that appears immediately after keyword"""
-        # Find keyword position
-        keyword_match = self.keyword_regex.search(text)
-        if not keyword_match:
+    def _extract_command_with_remaining(self, text: str, after_keyword: bool = False) -> Optional[dict]:
+        """
+        Extract command and remaining text.
+
+        Args:
+            text: Text to process
+            after_keyword: If True, extract command after keyword position
+
+        Returns:
+            Dictionary with 'command' and 'remaining_text', or None
+        """
+        if after_keyword:
+            # Find keyword position
+            keyword_match = self.keyword_regex.search(text)
+            if not keyword_match:
+                return None
+
+            # Look for command after keyword
+            after_keyword_text = text[keyword_match.end():]
+            # Strip both whitespace AND punctuation
+            after_keyword_text = self._strip_punctuation_and_whitespace(after_keyword_text)
+
+            # Extract command with multi-word support
+            return self._extract_multiword_command(after_keyword_text)
+        else:
+            # Extract from full text
+            return self._extract_multiword_command(text)
+
+    def _extract_multiword_command(self, text: str) -> Optional[dict]:
+        """
+        Extract multi-word command with cascading search.
+
+        Tries to find commands starting with max_command_words, then reducing
+        until a match is found or only 1 word remains.
+
+        Args:
+            text: Text after keyword
+
+        Returns:
+            Dictionary with 'command' and 'remaining_text', or None
+        """
+        if not text or not self.command_registry:
+            # Fallback to single word if no registry
+            words = text.split()
+            if words:
+                return {'command': words[0], 'remaining_text': ' '.join(words[1:]) if len(words) > 1 else None}
             return None
 
-        # Look for command after keyword
-        after_keyword = text[keyword_match.end():]
-        # Strip both whitespace AND punctuation
-        after_keyword = self._strip_punctuation_and_whitespace(after_keyword)
-        command_match = self.command_regex.match(after_keyword)
+        # Extract words
+        words = text.split()
+        if not words:
+            return None
 
-        if command_match:
-            return command_match.group(1)
+        # Remove filler words from the beginning
+        filler_words = {'um', 'uh', 'eh', 'the', 'a', 'an'}
+        while words and words[0].lower() in filler_words:
+            words.pop(0)
 
+        if not words:
+            return None
+
+        # Try to find command with cascading word count
+        # Start with max_command_words, then reduce until match found
+        max_words = min(self.max_command_words, len(words))
+
+        for num_words in range(max_words, 0, -1):
+            # Build candidate command (join first num_words words)
+            command_candidate = ' '.join(words[:num_words]).lower()
+
+            # Check if this command exists in registry
+            if self.command_registry.get_command(command_candidate):
+                logger.info(f"Found multi-word command: '{command_candidate}' ({num_words} words)")
+                remaining_words = words[num_words:]
+                remaining_text = ' '.join(remaining_words) if remaining_words else None
+                return {
+                    'command': command_candidate,
+                    'remaining_text': remaining_text
+                }
+
+        # No command found - return None (all text will be typed)
+        logger.debug(f"No command found in first {max_words} words, text will be typed")
         return None
 
     def _extract_command(self, text: str) -> Optional[str]:
-        """Extract command from text (assuming it's the first word)"""
-        # Remove any common filler words
-        filler_words = {'um', 'uh', 'eh', 'the', 'a', 'an'}
-
-        words = text.split()
-        for word in words:
-            if word not in filler_words and len(word) > 1:
-                return word
-
+        """Extract command from text with multi-word support"""
+        result = self._extract_multiword_command(text)
+        if result and result['command']:
+            return result['command']
         return None
 
-    def _process_command(self, command: str) -> DetectionResult:
+    def _process_command(self, command: str, remaining_text: Optional[str] = None) -> DetectionResult:
         """Process detected command"""
-        logger.info(f"Command detected: '{command}'")
+        if remaining_text:
+            logger.info(f"Command detected: '{command}', remaining text: '{remaining_text}'")
+        else:
+            logger.info(f"Command detected: '{command}'")
         self._reset_to_normal()
 
         return DetectionResult(
             detected_keyword=True,
             command_candidate=command,
+            remaining_text=remaining_text,
             confidence=self._calculate_confidence(command),
             mode=DetectionMode.NORMAL
         )

@@ -543,12 +543,35 @@ class MainWindow:
             foreground="gray"
         ).grid(row=4, column=2, sticky=tk.W, padx=(10, 0), pady=(5, 5))
 
+        # Max Command Words configuration
+        ttk.Label(
+            voice_frame,
+            text="Max Command Words:",
+            font=("Arial", 10, "bold")
+        ).grid(row=5, column=0, sticky=tk.W, pady=(5, 5))
+
+        self.voice_max_words_var = tk.IntVar(value=1)
+        max_words_spinbox = ttk.Spinbox(
+            voice_frame,
+            from_=1, to=5, increment=1,
+            textvariable=self.voice_max_words_var,
+            width=18
+        )
+        max_words_spinbox.grid(row=5, column=1, sticky=tk.W, pady=(5, 5))
+
+        ttk.Label(
+            voice_frame,
+            text="(max words for multi-word commands like 'enter doble')",
+            font=("Arial", 8),
+            foreground="gray"
+        ).grid(row=5, column=2, sticky=tk.W, padx=(10, 0), pady=(5, 5))
+
         # Example commands
         ttk.Label(
             voice_frame,
             text="Example Commands:",
             font=("Arial", 10, "bold")
-        ).grid(row=5, column=0, sticky=tk.W, pady=(15, 5))
+        ).grid(row=6, column=0, sticky=tk.W, pady=(15, 5))
 
         examples_text = (
             "• Basic: 'Tony Enter', 'Tony Space', 'Tony Backspace'\n"
@@ -565,7 +588,7 @@ class MainWindow:
             foreground="#333333",
             justify=tk.LEFT
         )
-        examples_label.grid(row=5, column=1, columnspan=2, sticky=tk.W, pady=(15, 5))
+        examples_label.grid(row=6, column=1, columnspan=2, sticky=tk.W, pady=(15, 5))
 
         # Warning about xdotool
         warning_label = ttk.Label(
@@ -574,7 +597,7 @@ class MainWindow:
             font=("Arial", 9, "bold"),
             foreground="orange"
         )
-        warning_label.grid(row=6, column=0, columnspan=3, sticky=tk.W, pady=(15, 0))
+        warning_label.grid(row=7, column=0, columnspan=3, sticky=tk.W, pady=(15, 0))
 
         # Separator
         ttk.Separator(voice_frame, orient=tk.HORIZONTAL).grid(
@@ -941,6 +964,7 @@ class MainWindow:
             self.voice_timeout_var.set(voice_settings.get('timeout', 3.0))
             self.voice_sensitivity_var.set(voice_settings.get('sensitivity', 'normal'))
             self.voice_commands_enabled_var.set(voice_settings.get('enabled', False))
+            self.voice_max_words_var.set(voice_settings.get('max_command_words', 1))
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"Failed to load voice command settings: {e}")
@@ -949,6 +973,7 @@ class MainWindow:
             self.voice_timeout_var.set(3.0)
             self.voice_sensitivity_var.set('normal')
             self.voice_commands_enabled_var.set(False)
+            self.voice_max_words_var.set(1)
 
         # Load voice commands JSON
         try:
@@ -1137,7 +1162,8 @@ class MainWindow:
                     keyword=self.voice_keyword_var.get().strip().lower(),
                     timeout=self.voice_timeout_var.get(),
                     sensitivity=self.voice_sensitivity_var.get(),
-                    enabled=self.voice_commands_enabled_var.get()
+                    enabled=self.voice_commands_enabled_var.get(),
+                    max_command_words=self.voice_max_words_var.get()
                 )
                 logger.info("Voice command settings saved to database")
 
@@ -1148,7 +1174,8 @@ class MainWindow:
                             keyword=self.voice_keyword_var.get().strip().lower(),
                             timeout=self.voice_timeout_var.get(),
                             sensitivity=self.voice_sensitivity_var.get(),
-                            enabled=self.voice_commands_enabled_var.get()
+                            enabled=self.voice_commands_enabled_var.get(),
+                            max_command_words=self.voice_max_words_var.get()
                         )
                         if self.controller.is_running():
                             logger.info("Voice command settings applied to active backend")
