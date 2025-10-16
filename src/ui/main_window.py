@@ -94,7 +94,7 @@ class MainWindow:
         self._create_progress_frame(self.main_frame)
 
     def _create_settings_view(self):
-        """Create the settings view"""
+        """Create the settings view with tabs"""
         self.settings_frame = ttk.Frame(self.container, padding="20")
 
         # Configure grid
@@ -107,24 +107,93 @@ class MainWindow:
             text="⚙ Settings",
             font=("Arial", 16, "bold")
         )
-        settings_title.grid(row=0, column=0, pady=(0, 20), sticky=tk.W)
+        settings_title.grid(row=0, column=0, pady=(0, 15), sticky=tk.W)
 
-        # Content frame
-        content_frame = ttk.Frame(self.settings_frame)
-        content_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        content_frame.columnconfigure(0, weight=1)
+        # Create notebook (tabs)
+        self.settings_notebook = ttk.Notebook(self.settings_frame)
+        self.settings_notebook.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-        # Backend selection
-        self._create_backend_section(content_frame)
-
-        # Voice Commands section
-        self._create_voice_commands_section(content_frame)
-
-        # Debug settings
-        self._create_debug_section(content_frame)
+        # Create tabs
+        self._create_general_tab()
+        self._create_voice_commands_tab()
+        self._create_debug_tab()
 
         # Settings buttons
         self._create_settings_buttons(self.settings_frame)
+
+    def _create_general_tab(self):
+        """Create General settings tab"""
+        # Create scrollable frame for general settings
+        general_frame = ttk.Frame(self.settings_notebook, padding="15")
+        general_frame.columnconfigure(0, weight=1)
+
+        # Create canvas and scrollbar for scrolling
+        canvas = tk.Canvas(general_frame, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(general_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Pack canvas and scrollbar
+        canvas.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+
+        general_frame.rowconfigure(0, weight=1)
+
+        # Add backend selection to scrollable frame
+        self._create_backend_section(scrollable_frame)
+
+        # Add tab to notebook
+        self.settings_notebook.add(general_frame, text="  General  ")
+
+    def _create_voice_commands_tab(self):
+        """Create Voice Commands settings tab"""
+        # Create frame for voice commands
+        voice_frame = ttk.Frame(self.settings_notebook, padding="15")
+        voice_frame.columnconfigure(0, weight=1)
+
+        # Create canvas and scrollbar for scrolling
+        canvas = tk.Canvas(voice_frame, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(voice_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Pack canvas and scrollbar
+        canvas.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+
+        voice_frame.rowconfigure(0, weight=1)
+
+        # Add voice commands section to scrollable frame
+        self._create_voice_commands_section(scrollable_frame)
+
+        # Add tab to notebook
+        self.settings_notebook.add(voice_frame, text="  Voice Commands  ")
+
+    def _create_debug_tab(self):
+        """Create Debug settings tab"""
+        # Create frame for debug settings
+        debug_frame = ttk.Frame(self.settings_notebook, padding="15")
+        debug_frame.columnconfigure(0, weight=1)
+
+        # Add debug section
+        self._create_debug_section(debug_frame)
+
+        # Add tab to notebook
+        self.settings_notebook.add(debug_frame, text="  Debug  ")
 
     def _create_backend_section(self, parent):
         """Create backend selection section"""
@@ -380,7 +449,7 @@ class MainWindow:
     def _create_voice_commands_section(self, parent):
         """Create voice commands configuration section"""
         voice_frame = ttk.LabelFrame(parent, text="🔊 Voice Commands (Experimental)", padding="15")
-        voice_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(15, 0))
+        voice_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 15))
         voice_frame.columnconfigure(1, weight=1)
 
         # Info label
@@ -515,7 +584,7 @@ class MainWindow:
     def _create_debug_section(self, parent):
         """Create debug settings section"""
         debug_frame = ttk.LabelFrame(parent, text="Debug Settings", padding="15")
-        debug_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=(15, 0))
+        debug_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 15))
         debug_frame.columnconfigure(0, weight=1)
 
         # Debug checkbox
@@ -678,10 +747,9 @@ class MainWindow:
         x = self.root.winfo_x()
         y = self.root.winfo_y()
 
-        # Larger size for settings to show all content, maintaining position
-        # Increased height to accommodate all Whisper settings and debug options
-        self.root.geometry(f"850x900+{x}+{y}")
-        self.root.minsize(800, 850)    # Minimum to ensure all content is visible
+        # Optimized size for tabbed settings view
+        self.root.geometry(f"850x700+{x}+{y}")
+        self.root.minsize(800, 650)
         # No max size restriction (allow free resizing)
 
         # Load current settings
@@ -888,9 +956,9 @@ class MainWindow:
                     sensitivity=self.voice_sensitivity_var.get(),
                     enabled=self.voice_commands_enabled_var.get()
                 )
-                logger.info("Voice command settings saved")
+                logger.info("Voice command settings saved to database")
 
-                # If Whisper backend is active, update its settings
+                # Update Whisper backend settings (whether active or not)
                 if self.controller.current_backend and self.controller.backend_type == 'whisper':
                     if hasattr(self.controller.current_backend, 'update_voice_command_settings'):
                         self.controller.current_backend.update_voice_command_settings(
@@ -899,7 +967,10 @@ class MainWindow:
                             sensitivity=self.voice_sensitivity_var.get(),
                             enabled=self.voice_commands_enabled_var.get()
                         )
-                        logger.info("Voice command settings applied to active backend")
+                        if self.controller.is_running():
+                            logger.info("Voice command settings applied to active backend")
+                        else:
+                            logger.info("Voice command settings updated in backend (will apply on next start)")
             except Exception as e:
                 logger.error(f"Failed to save voice command settings: {e}")
 
@@ -1111,11 +1182,18 @@ class MainWindow:
 
         # Update voice commands status
         try:
+            # Get voice command settings from database (always available)
+            vc_settings = self.database.get_voice_command_settings()
+            enabled = vc_settings.get('enabled', False)
+            keyword = vc_settings.get('keyword', 'tony')
+
+            # If Whisper backend is active, check real-time status
             if self.controller.current_backend and self.controller.backend_type == 'whisper':
                 if hasattr(self.controller.current_backend, 'get_voice_command_status'):
                     vc_status = self.controller.current_backend.get_voice_command_status()
                     if vc_status.get('enabled', False):
-                        keyword = vc_status.get('keyword', 'tony')
+                        # Get current keyword from active backend (may have been updated)
+                        keyword = vc_status.get('keyword', keyword)
                         if vc_status.get('command_mode_active', False):
                             remaining = vc_status.get('remaining_timeout', 0)
                             self.voice_commands_label.config(
@@ -1132,7 +1210,17 @@ class MainWindow:
                 else:
                     self.voice_commands_label.config(text="Deshabilitado", foreground="gray")
             else:
-                self.voice_commands_label.config(text="Solo Whisper", foreground="gray")
+                # Backend not active - show settings from database
+                if self.config.backend == 'whisper':
+                    if enabled:
+                        self.voice_commands_label.config(
+                            text=f"Configurado [{keyword}]",
+                            foreground="gray"
+                        )
+                    else:
+                        self.voice_commands_label.config(text="Deshabilitado", foreground="gray")
+                else:
+                    self.voice_commands_label.config(text="Solo Whisper", foreground="gray")
         except Exception as e:
             import logging
             logging.getLogger(__name__).debug(f"Error updating voice command status: {e}")
