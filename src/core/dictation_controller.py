@@ -4,12 +4,10 @@ Controller for managing dictation backends (Vosk and Whisper)
 Supports multiple speech recognition backends with unified interface.
 """
 
-import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
 from src.backends import BaseBackend, VoskBackend, WhisperBackend
-
-logger = logging.getLogger(__name__)
+from src.core.logging_controller import info, debug, warning, error, critical
 
 
 class DictationController:
@@ -35,7 +33,7 @@ class DictationController:
 
         # Check if backend type changed
         if new_backend != self.backend_type:
-            logger.info(f"Backend changed in config from {self.backend_type} to {new_backend}")
+            info(f"Backend changed in config from {self.backend_type} to {new_backend}")
             self.set_backend(new_backend)
 
         # For Whisper backend, check if model size changed
@@ -57,10 +55,10 @@ class DictationController:
             current_model = whisper_backend.model_size
 
             if new_model_size != current_model:
-                logger.info(f"Whisper model changed from '{current_model}' to '{new_model_size}'")
+                info(f"Whisper model changed from '{current_model}' to '{new_model_size}'")
                 # Stop any running session first
                 if self.is_running():
-                    logger.info("Stopping current session before model update")
+                    info("Stopping current session before model update")
                     self.stop()
                 # Update the model
                 whisper_backend.update_model_size(new_model_size)
@@ -76,9 +74,9 @@ class DictationController:
                     venv_python=str(venv_python),
                     models_dir=str(self.config.models_dir)
                 )
-                logger.info("Vosk backend initialized")
+                info("Vosk backend initialized")
             else:
-                logger.warning("Vosk backend not available: nerd-dictation_dir not configured")
+                warning("Vosk backend not available: nerd-dictation_dir not configured")
 
             # Initialize Whisper backend if available
             try:
@@ -111,25 +109,25 @@ class DictationController:
                     min_audio_length=min_audio_length,
                     database=self.database
                 )
-                logger.info(f"Whisper backend initialized with model '{whisper_model}' on {whisper_device} "
+                info(f"Whisper backend initialized with model '{whisper_model}' on {whisper_device} "
                           f"(silence={silence_duration}s, threshold={energy_threshold}, min_length={min_audio_length}s)")
             except Exception as e:
-                logger.warning(f"Whisper backend not available: {e}")
+                warning(f"Whisper backend not available: {e}")
 
             # Select default backend
             if self.backend_type in self.backends:
                 self.current_backend = self.backends[self.backend_type]
-                logger.info(f"Using default backend: {self.backend_type}")
+                info(f"Using default backend: {self.backend_type}")
             elif self.backends:
                 # Fallback to first available backend
                 self.backend_type = next(iter(self.backends))
                 self.current_backend = self.backends[self.backend_type]
-                logger.info(f"Using fallback backend: {self.backend_type}")
+                info(f"Using fallback backend: {self.backend_type}")
             else:
-                logger.error("No backends available")
+                error("No backends available")
 
         except Exception as e:
-            logger.error(f"Failed to initialize backends: {e}")
+            error(f"Failed to initialize backends: {e}")
 
     def set_backend(self, backend_type: str) -> bool:
         """
@@ -142,7 +140,7 @@ class DictationController:
             True if backend switched successfully
         """
         if backend_type not in self.backends:
-            logger.error(f"Backend '{backend_type}' not available")
+            error(f"Backend '{backend_type}' not available")
             return False
 
         # Stop current backend if running
@@ -151,7 +149,7 @@ class DictationController:
 
         self.backend_type = backend_type
         self.current_backend = self.backends[backend_type]
-        logger.info(f"Switched to {backend_type} backend (current_backend is now: {self.current_backend.name})")
+        info(f"Switched to {backend_type} backend (current_backend is now: {self.current_backend.name})")
         return True
 
     def get_available_backends(self) -> Dict[str, str]:
@@ -193,18 +191,18 @@ class DictationController:
         if not self.current_backend:
             return False, "No backend available"
 
-        logger.info(f"Starting dictation with backend_type: {self.backend_type}, current_backend: {self.current_backend.name}")
+        info(f"Starting dictation with backend_type: {self.backend_type}, current_backend: {self.current_backend.name}")
 
         # Check if backend is in ERROR state and try to reset it
         if hasattr(self.current_backend, 'status'):
             from src.backends.base_backend import BackendStatus
             if self.current_backend.status == BackendStatus.ERROR:
-                logger.info(f"Backend is in ERROR state, attempting to reset...")
+                info(f"Backend is in ERROR state, attempting to reset...")
                 if hasattr(self.current_backend, 'reset_error_state'):
                     if self.current_backend.reset_error_state():
-                        logger.info("Backend reset from ERROR state successfully")
+                        info("Backend reset from ERROR state successfully")
                     else:
-                        logger.warning("Failed to reset backend from ERROR state")
+                        warning("Failed to reset backend from ERROR state")
 
         # Stop any existing session first
         if self.is_running():
@@ -246,7 +244,7 @@ class DictationController:
                 return False, f"Error al iniciar {self.current_backend.name}: {error_msg}"
 
         except Exception as e:
-            logger.error(f"Failed to start dictation: {e}")
+            error(f"Failed to start dictation: {e}")
             return False, f"Error al iniciar: {str(e)}"
 
     def stop(self) -> Tuple[bool, str]:
@@ -273,7 +271,7 @@ class DictationController:
                 return False, f"Error al detener: {error_msg}"
 
         except Exception as e:
-            logger.error(f"Failed to stop dictation: {e}")
+            error(f"Failed to stop dictation: {e}")
             return False, f"Error al detener: {str(e)}"
 
     def restart(self, language: str, model_path: Optional[str] = None) -> Tuple[bool, str]:
@@ -351,7 +349,7 @@ class DictationController:
             try:
                 models[backend_name] = backend.get_available_models(language)
             except Exception as e:
-                logger.error(f"Failed to get models for {backend_name}: {e}")
+                error(f"Failed to get models for {backend_name}: {e}")
                 models[backend_name] = []
 
         return models
@@ -381,4 +379,4 @@ class DictationController:
             elif backend.is_running:
                 backend.stop()
 
-        logger.info("DictationController cleaned up")
+        info("DictationController cleaned up")

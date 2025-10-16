@@ -7,11 +7,10 @@ mimicking nerd-dictation's behavior.
 
 import subprocess
 import threading
-import logging
 from typing import Optional, Callable
 import queue
 
-logger = logging.getLogger(__name__)
+from src.core.logging_controller import info, debug, warning, error, critical
 
 
 class KeyboardOutput:
@@ -43,11 +42,11 @@ class KeyboardOutput:
             subprocess.run(['xdotool', '--version'],
                           capture_output=True, check=True)
             self.xdotool_available = True
-            logger.info("xdotool found and working")
+            info("xdotool found and working")
         except (subprocess.CalledProcessError, FileNotFoundError):
             self.xdotool_available = False
             error_msg = "xdotool not found. Install with: sudo apt install xdotool"
-            logger.error(error_msg)
+            error(error_msg)
             if on_error:
                 on_error(error_msg)
 
@@ -61,11 +60,11 @@ class KeyboardOutput:
     def start(self):
         """Start the keyboard output worker."""
         if not self.xdotool_available:
-            logger.error("Cannot start keyboard output: xdotool not available")
+            error("Cannot start keyboard output: xdotool not available")
             return False
 
         if self.is_running:
-            logger.warning("Keyboard output already running")
+            warning("Keyboard output already running")
             return True
 
         self.is_running = True
@@ -73,7 +72,7 @@ class KeyboardOutput:
         self.output_thread.daemon = True
         self.output_thread.start()
 
-        logger.info("Started keyboard output worker")
+        info("Started keyboard output worker")
         return True
 
     def stop(self):
@@ -92,7 +91,7 @@ class KeyboardOutput:
         # Reset previous text on stop
         self.previous_text = ""
 
-        logger.info("Stopped keyboard output worker")
+        info("Stopped keyboard output worker")
 
     def type_text(self, text: str, enable_correction: bool = True):
         """
@@ -106,13 +105,13 @@ class KeyboardOutput:
             enable_correction: Enable correction by comparing with previous text
         """
         if not self.xdotool_available:
-            logger.error("Cannot type text: xdotool not available")
+            error("Cannot type text: xdotool not available")
             return
 
         if self.is_running:
             self.output_queue.put((text, enable_correction))
         else:
-            logger.warning("Keyboard output not running, cannot type text")
+            warning("Keyboard output not running, cannot type text")
 
     def _output_loop(self):
         """Main output loop that runs in background thread."""
@@ -137,7 +136,7 @@ class KeyboardOutput:
             except queue.Empty:
                 continue
             except Exception as e:
-                logger.error(f"Output loop error: {e}")
+                error(f"Output loop error: {e}")
                 if self.on_error:
                     self.on_error(f"Output error: {e}")
 
@@ -174,7 +173,7 @@ class KeyboardOutput:
             new_text = text[match_index:]
 
             if chars_to_delete > 0:
-                logger.info(f"Correction: deleting {chars_to_delete} chars, typing '{new_text}'")
+                info(f"Correction: deleting {chars_to_delete} chars, typing '{new_text}'")
                 # Send BackSpace keys to delete old text
                 self._delete_characters(chars_to_delete)
 
@@ -205,15 +204,15 @@ class KeyboardOutput:
 
             if result.returncode != 0:
                 error_msg = f"xdotool delete failed: {result.stderr}"
-                logger.error(error_msg)
+                error(error_msg)
                 if self.on_error:
                     self.on_error(error_msg)
             else:
-                logger.debug(f"Deleted {count} characters")
+                debug(f"Deleted {count} characters")
 
         except Exception as e:
             error_msg = f"Failed to delete characters: {e}"
-            logger.error(error_msg)
+            error(error_msg)
             if self.on_error:
                 self.on_error(error_msg)
 
@@ -241,15 +240,15 @@ class KeyboardOutput:
 
             if result.returncode != 0:
                 error_msg = f"xdotool failed: {result.stderr}"
-                logger.error(error_msg)
+                error(error_msg)
                 if self.on_error:
                     self.on_error(error_msg)
             else:
-                logger.debug(f"Typed text: '{text}'")
+                debug(f"Typed text: '{text}'")
 
         except Exception as e:
             error_msg = f"Failed to type text: {e}"
-            logger.error(error_msg)
+            error(error_msg)
             if self.on_error:
                 self.on_error(error_msg)
 
@@ -262,7 +261,7 @@ class KeyboardOutput:
                 subprocess.run(['xdotool', 'keyup', modifier],
                              capture_output=True, check=False)
         except Exception as e:
-            logger.warning(f"Failed to clear modifiers: {e}")
+            warning(f"Failed to clear modifiers: {e}")
 
     def type_immediate(self, text: str):
         """
@@ -275,7 +274,7 @@ class KeyboardOutput:
             text: Text to type immediately
         """
         if not self.xdotool_available:
-            logger.error("Cannot type text: xdotool not available")
+            error("Cannot type text: xdotool not available")
             return
 
         self._type_text_immediate(text)
@@ -288,15 +287,15 @@ class KeyboardOutput:
             key: Key name (e.g., 'Return', 'Space', 'BackSpace')
         """
         if not self.xdotool_available:
-            logger.error("Cannot press key: xdotool not available")
+            error("Cannot press key: xdotool not available")
             return
 
         try:
             subprocess.run(['xdotool', 'key', key],
                           capture_output=True, check=True)
-            logger.debug(f"Pressed key: {key}")
+            debug(f"Pressed key: {key}")
         except Exception as e:
-            logger.error(f"Failed to press key {key}: {e}")
+            error(f"Failed to press key {key}: {e}")
             if self.on_error:
                 self.on_error(f"Key press error: {e}")
 
@@ -308,7 +307,7 @@ class KeyboardOutput:
         the previous text is no longer relevant.
         """
         self.previous_text = ""
-        logger.debug("Reset correction state")
+        debug("Reset correction state")
 
     def check_dependencies(self) -> dict:
         """
@@ -396,11 +395,11 @@ class TextProcessor:
         if not text:
             return text
 
-        logger.debug(f"Text processing - Input: '{text}'")
+        debug(f"Text processing - Input: '{text}'")
 
         # First, normalize punctuation spacing (Whisper often doesn't add spaces)
         processed = self._normalize_punctuation_spacing(text)
-        logger.debug(f"Text processing - After normalization: '{processed}'")
+        debug(f"Text processing - After normalization: '{processed}'")
 
         # DON'T convert to lowercase - Whisper's capitalization is usually correct
         # Only apply specific text replacements that need case changes
@@ -428,12 +427,12 @@ class TextProcessor:
                 i += 1
 
         processed = ' '.join(words)
-        logger.debug(f"Text processing - After replacements: '{processed}'")
+        debug(f"Text processing - After replacements: '{processed}'")
 
         # Clean up extra spaces
         processed = ' '.join(processed.split())
 
-        logger.debug(f"Text processing - Final output: '{processed}'")
+        debug(f"Text processing - Final output: '{processed}'")
         return processed
 
     def _normalize_punctuation_spacing(self, text: str) -> str:
@@ -456,29 +455,29 @@ class TextProcessor:
         before = text
         text = re.sub(r'([.!?])([A-ZÑÁÉÍÓÚÜa-zñáéíóúü¿¡])', r'\1 \2', text)
         if text != before:
-            logger.debug(f"Normalization - After punctuation+letter: '{before}' → '{text}'")
+            debug(f"Normalization - After punctuation+letter: '{before}' → '{text}'")
 
         # Add space after commas if followed by a letter
         before = text
         text = re.sub(r'(,)([A-Za-zÑñÁÉÍÓÚÜáéíóúü])', r'\1 \2', text)
         if text != before:
-            logger.debug(f"Normalization - After comma+letter: '{before}' → '{text}'")
+            debug(f"Normalization - After comma+letter: '{before}' → '{text}'")
 
         # Add space after colons and semicolons if followed by a letter
         before = text
         text = re.sub(r'([;:])([A-Za-zÑñÁÉÍÓÚÜáéíóúü])', r'\1 \2', text)
         if text != before:
-            logger.debug(f"Normalization - After colon/semicolon+letter: '{before}' → '{text}'")
+            debug(f"Normalization - After colon/semicolon+letter: '{before}' → '{text}'")
 
         # Handle cases where uppercase letter directly follows lowercase (word boundaries)
         # Handles: listoEra → listo Era, gastrosQue → gastros Que, tantasPuntadas → tantas Puntadas
         before = text
         text = re.sub(r'([a-zñáéíóúü])([A-ZÑÁÉÍÓÚÜ])', r'\1 \2', text)
         if text != before:
-            logger.debug(f"Normalization - After lowercase+uppercase: '{before}' → '{text}'")
+            debug(f"Normalization - After lowercase+uppercase: '{before}' → '{text}'")
 
         if text != original:
-            logger.info(f"Punctuation normalization applied: '{original}' → '{text}'")
+            info(f"Punctuation normalization applied: '{original}' → '{text}'")
 
         return text
 

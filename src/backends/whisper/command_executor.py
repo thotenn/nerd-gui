@@ -3,11 +3,10 @@ Executes voice commands via keyboard actions using xdotool.
 """
 
 import subprocess
-import logging
 from typing import List, Optional
 from .command_registry import CommandAction
 
-logger = logging.getLogger(__name__)
+from src.core.logging_controller import info, debug, warning, error, critical
 
 
 class CommandExecutor:
@@ -17,7 +16,7 @@ class CommandExecutor:
         self.xdotool_available = self._check_xdotool()
 
         if not self.xdotool_available:
-            logger.error("xdotool not available, command execution disabled")
+            error("xdotool not available, command execution disabled")
 
     def _check_xdotool(self) -> bool:
         """Check if xdotool is available"""
@@ -39,20 +38,20 @@ class CommandExecutor:
             True if successful, False otherwise
         """
         if not self.xdotool_available:
-            logger.error("Cannot execute command: xdotool not available")
+            error("Cannot execute command: xdotool not available")
             return False
 
         if not command_action.enabled:
-            logger.warning(f"Command disabled: {command_action}")
+            warning(f"Command disabled: {command_action}")
             return False
 
         try:
             success = self._execute_keys(command_action.keys)
             if success:
-                logger.info(f"Command executed successfully: {command_action.description}")
+                info(f"Command executed successfully: {command_action.description}")
             return success
         except Exception as e:
-            logger.error(f"Failed to execute command {command_action.keys}: {e}")
+            error(f"Failed to execute command {command_action.keys}: {e}")
             return False
 
     def _execute_keys(self, keys: List[str]) -> bool:
@@ -95,16 +94,16 @@ class CommandExecutor:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
 
             if result.returncode != 0:
-                logger.error(f"xdotool failed: {result.stderr}")
+                error(f"xdotool failed: {result.stderr}")
                 return False
 
             return True
 
         except subprocess.TimeoutExpired:
-            logger.error("Command execution timed out")
+            error("Command execution timed out")
             return False
         except Exception as e:
-            logger.error(f"Error executing keys {keys}: {e}")
+            error(f"Error executing keys {keys}: {e}")
             return False
 
     def test_xdotool(self) -> bool:

@@ -5,7 +5,6 @@ Wraps the existing nerd-dictation functionality to provide
 a consistent interface alongside the new Whisper backend.
 """
 
-import logging
 import subprocess
 import time
 import os
@@ -13,7 +12,7 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 from .base_backend import BaseBackend, BackendStatus
 
-logger = logging.getLogger(__name__)
+from src.core.logging_controller import info, debug, warning, error, critical
 
 
 class VoskBackend(BaseBackend):
@@ -44,12 +43,12 @@ class VoskBackend(BaseBackend):
 
         # Verify paths exist
         if not self.nerd_dictation_dir.exists():
-            logger.error(f"nerd-dictation directory not found: {nerd_dictation_dir}")
+            error(f"nerd-dictation directory not found: {nerd_dictation_dir}")
             self._set_status(BackendStatus.ERROR,
                            f"nerd-dictation not found at {nerd_dictation_dir}")
 
         if not os.path.exists(venv_python):
-            logger.error(f"Virtual environment python not found: {venv_python}")
+            error(f"Virtual environment python not found: {venv_python}")
             self._set_status(BackendStatus.ERROR,
                            f"Virtual environment not found at {venv_python}")
 
@@ -71,11 +70,11 @@ class VoskBackend(BaseBackend):
             True if dictation started successfully
         """
         if self.status == BackendStatus.ERROR:
-            logger.error("Cannot start Vosk backend: in error state")
+            error("Cannot start Vosk backend: in error state")
             return False
 
         if self.is_running:
-            logger.warning("Vosk backend already running")
+            warning("Vosk backend already running")
             return True
 
         try:
@@ -89,13 +88,13 @@ class VoskBackend(BaseBackend):
 
             if not model_full_path or not model_full_path.exists():
                 error_msg = f"Model not found for language '{language}'"
-                logger.error(error_msg)
+                error(error_msg)
                 self._set_status(BackendStatus.ERROR, error_msg)
                 return False
 
             # Check if nerd-dictation is already running
             if self._is_nerd_dictation_running():
-                logger.info("nerd-dictation already running, stopping first...")
+                info("nerd-dictation already running, stopping first...")
                 self._stop_nerd_dictation()
 
             # Start nerd-dictation with the selected model
@@ -109,7 +108,7 @@ class VoskBackend(BaseBackend):
             # Set working directory to nerd-dictation
             cwd = str(self.nerd_dictation_dir)
 
-            logger.info(f"Starting nerd-dictation with model: {model_full_path}")
+            info(f"Starting nerd-dictation with model: {model_full_path}")
             self.nerd_dictation_process = subprocess.Popen(
                 cmd,
                 cwd=cwd,
@@ -126,7 +125,7 @@ class VoskBackend(BaseBackend):
                 # Process terminated early
                 stdout, stderr = self.nerd_dictation_process.communicate()
                 error_msg = f"nerd-dictation failed to start: {stderr}"
-                logger.error(error_msg)
+                error(error_msg)
                 self._set_status(BackendStatus.ERROR, error_msg)
                 return False
 
@@ -136,14 +135,14 @@ class VoskBackend(BaseBackend):
             self.current_model_path = str(model_full_path)
 
             self._set_status(BackendStatus.RUNNING)
-            logger.info(f"Vosk dictation started with language '{language}' "
+            info(f"Vosk dictation started with language '{language}' "
                        f"using model '{model_full_path.name}'")
 
             return True
 
         except Exception as e:
             error_msg = f"Failed to start Vosk backend: {e}"
-            logger.error(error_msg)
+            error(error_msg)
             self._set_status(BackendStatus.ERROR, error_msg)
             return False
 
@@ -155,7 +154,7 @@ class VoskBackend(BaseBackend):
             True if dictation stopped successfully
         """
         if not self.is_running:
-            logger.warning("Vosk backend not running")
+            warning("Vosk backend not running")
             return True
 
         try:
@@ -179,13 +178,13 @@ class VoskBackend(BaseBackend):
             }
 
             self._set_status(BackendStatus.STOPPED)
-            logger.info("Vosk dictation stopped")
+            info("Vosk dictation stopped")
 
             return success
 
         except Exception as e:
             error_msg = f"Failed to stop Vosk backend: {e}"
-            logger.error(error_msg)
+            error(error_msg)
             self._set_status(BackendStatus.ERROR, error_msg)
             return False
 
@@ -200,7 +199,7 @@ class VoskBackend(BaseBackend):
             List of available model names
         """
         if not self.models_dir.exists():
-            logger.warning(f"Models directory not found: {self.models_dir}")
+            warning(f"Models directory not found: {self.models_dir}")
             return []
 
         models = []
@@ -293,7 +292,7 @@ class VoskBackend(BaseBackend):
                             timeout=5
                         )
                     except subprocess.TimeoutExpired:
-                        logger.warning("Graceful shutdown timed out")
+                        warning("Graceful shutdown timed out")
 
                     # Wait a bit for graceful shutdown
                     time.sleep(0.5)
@@ -319,7 +318,7 @@ class VoskBackend(BaseBackend):
             return True
 
         except Exception as e:
-            logger.error(f"Failed to stop nerd-dictation: {e}")
+            error(f"Failed to stop nerd-dictation: {e}")
             return False
 
     def get_status_info(self) -> Dict[str, Any]:

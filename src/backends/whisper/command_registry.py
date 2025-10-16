@@ -4,11 +4,9 @@ Registry of available voice commands and their keyboard actions.
 
 from typing import Dict, List, Optional
 from dataclasses import dataclass
-import logging
 import json
 from pathlib import Path
-
-logger = logging.getLogger(__name__)
+from src.core.logging_controller import info, debug, warning, error, critical
 
 
 @dataclass
@@ -42,17 +40,17 @@ class CommandRegistry:
             if self.database:
                 commands_json = self.database.get_commands_json()
                 if commands_json:
-                    logger.info("Loading commands from database")
+                    info("Loading commands from database")
                     self._load_from_json_string(commands_json)
                     return
 
             # If no database or no saved commands, load defaults
-            logger.info("Loading default commands from JSON file")
+            info("Loading default commands from JSON file")
             self._load_default_commands()
 
         except Exception as e:
-            logger.error(f"Error loading commands: {e}")
-            logger.info("Falling back to default commands")
+            error(f"Error loading commands: {e}")
+            info("Falling back to default commands")
             self._load_default_commands()
 
     def _load_default_commands(self):
@@ -63,7 +61,7 @@ class CommandRegistry:
                 commands_data = json.load(f)
                 self._load_from_dict(commands_data)
         else:
-            logger.error(f"Default commands file not found: {default_file}")
+            error(f"Default commands file not found: {default_file}")
 
     def _load_from_json_string(self, json_string: str):
         """Load commands from JSON string"""
@@ -82,7 +80,7 @@ class CommandRegistry:
                 custom=data.get('custom', False)
             )
             self.commands[name.lower()] = command
-        logger.info(f"Loaded {len(self.commands)} commands")
+        info(f"Loaded {len(self.commands)} commands")
 
     @staticmethod
     def get_default_commands_path() -> Path:
@@ -91,14 +89,14 @@ class CommandRegistry:
 
     def reset_to_defaults(self):
         """Reset commands to default values"""
-        logger.info("Resetting commands to defaults")
+        info("Resetting commands to defaults")
         self._load_default_commands()
 
         # Save to database if available
         if self.database:
             commands_json = self.export_commands_json()
             self.database.save_commands_json(commands_json)
-            logger.info("Default commands saved to database")
+            info("Default commands saved to database")
 
     def register_command(self,
                         name: str,
@@ -113,14 +111,14 @@ class CommandRegistry:
             custom=True
         )
         self.commands[name.lower()] = command
-        logger.info(f"Registered custom command: '{name}' -> {keys}")
+        info(f"Registered custom command: '{name}' -> {keys}")
 
     def unregister_command(self, name: str):
         """Unregister a command (only custom commands)"""
         name_lower = name.lower()
         if name_lower in self.commands and self.commands[name_lower].custom:
             del self.commands[name_lower]
-            logger.info(f"Unregistered custom command: '{name}'")
+            info(f"Unregistered custom command: '{name}'")
             return True
         return False
 
@@ -196,7 +194,7 @@ class CommandRegistry:
         """Enable or disable a command"""
         if name.lower() in self.commands:
             self.commands[name.lower()].enabled = enabled
-            logger.info(f"Command '{name}' {'enabled' if enabled else 'disabled'}")
+            info(f"Command '{name}' {'enabled' if enabled else 'disabled'}")
             return True
         return False
 
@@ -253,14 +251,14 @@ class CommandRegistry:
             # Save to database if available
             if self.database:
                 self.database.save_commands_json(json_string)
-                logger.info("Commands updated and saved to database")
+                info("Commands updated and saved to database")
 
             return True
         except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON: {e}")
+            error(f"Invalid JSON: {e}")
             return False
         except Exception as e:
-            logger.error(f"Error updating commands from JSON: {e}")
+            error(f"Error updating commands from JSON: {e}")
             return False
 
     def import_commands(self, commands_data: Dict[str, Dict]):

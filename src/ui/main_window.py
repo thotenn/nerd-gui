@@ -745,7 +745,53 @@ class MainWindow:
             foreground="gray",
             wraplength=700,
             justify=tk.LEFT
-        ).grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
+        ).grid(row=1, column=0, sticky=tk.W, pady=(5, 15))
+
+        # Log Filters Section
+        log_filters_frame = ttk.LabelFrame(debug_frame, text="Log Level Filters", padding="10")
+        log_filters_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(10, 0))
+        log_filters_frame.columnconfigure(0, weight=1)
+
+        # Log level filter description
+        ttk.Label(
+            log_filters_frame,
+            text="Select which log levels to display in console and log file:",
+            font=("Arial", 9),
+            foreground="gray",
+            wraplength=650,
+            justify=tk.LEFT
+        ).grid(row=0, column=0, sticky=tk.W, pady=(0, 10))
+
+        # Create log filter checkboxes
+        self.log_filter_vars = {}
+        log_levels = [
+            ("INFO", "ℹ️ Information messages (general status, operations)"),
+            ("WARNING", "⚠️ Warning messages (potential issues)"),
+            ("ERROR", "❌ Error messages (failed operations)"),
+            ("CRITICAL", "🔥 Critical messages (serious failures)")
+        ]
+
+        for i, (level, description) in enumerate(log_levels):
+            var = tk.BooleanVar(value=True)  # All enabled by default
+            self.log_filter_vars[level] = var
+
+            check = ttk.Checkbutton(
+                log_filters_frame,
+                text=f"{level}:",
+                variable=var
+            )
+            check.grid(row=i+1, column=0, sticky=tk.W, pady=2)
+
+            # Description label
+            desc_label = ttk.Label(
+                log_filters_frame,
+                text=description,
+                font=("Arial", 8),
+                foreground="gray",
+                wraplength=600,
+                justify=tk.LEFT
+            )
+            desc_label.grid(row=i+1, column=1, sticky=tk.W, padx=(20, 0), pady=2)
 
     def _create_settings_buttons(self, parent):
         """Create settings view buttons"""
@@ -957,6 +1003,17 @@ class MainWindow:
         debug_str = self.database.get_setting('debug_enabled', 'false')
         self.debug_var.set(debug_str.lower() in ('true', '1', 'yes'))
 
+        # Load log filters (only if log_filter_vars exists - might be loading before UI creation)
+        if hasattr(self, 'log_filter_vars'):
+            try:
+                log_filters = self.database.get_log_filters()
+                for level, var in self.log_filter_vars.items():
+                    var.set(log_filters.get(level, True))  # Default to True if not found
+            except Exception as e:
+                # Set defaults if loading fails
+                for var in self.log_filter_vars.values():
+                    var.set(True)
+
         # Load voice commands settings
         try:
             voice_settings = self.database.get_voice_command_settings()
@@ -966,7 +1023,7 @@ class MainWindow:
             self.voice_commands_enabled_var.set(voice_settings.get('enabled', False))
             self.voice_max_words_var.set(voice_settings.get('max_command_words', 1))
         except Exception as e:
-            import logging
+            # import logging
             logging.getLogger(__name__).warning(f"Failed to load voice command settings: {e}")
             # Set defaults
             self.voice_keyword_var.set('tony')
@@ -997,7 +1054,7 @@ class MainWindow:
             self.commands_json_text.delete('1.0', tk.END)
             self.commands_json_text.insert('1.0', commands_json)
         except Exception as e:
-            import logging
+            # import logging
             logging.getLogger(__name__).warning(f"Failed to load commands JSON: {e}")
             self.commands_json_text.delete('1.0', tk.END)
             self.commands_json_text.insert('1.0', "{}")
@@ -1062,8 +1119,7 @@ class MainWindow:
 
     def _on_settings_save(self):
         """Handle Settings save button"""
-        import logging
-        logger = logging.getLogger(__name__)
+        from src.core.logging_controller import info, debug, warning, error, critical
 
         try:
             # Validate inputs
@@ -1078,7 +1134,7 @@ class MainWindow:
             new_backend = self.backend_var.get()
             if current_backend != new_backend:
                 backend_changed = True
-                logger.info(f"Backend changed from {current_backend} to {new_backend}")
+                info(f"Backend changed from {current_backend} to {new_backend}")
 
             # Check if Whisper model changed
             if new_backend == 'whisper':
@@ -1087,11 +1143,11 @@ class MainWindow:
                 new_model = self.model_ids.get(display_name, "Systran/faster-whisper-medium")
                 if current_model != new_model:
                     model_changed = True
-                    logger.info(f"Whisper model changed from {current_model} to {new_model}")
+                    info(f"Whisper model changed from {current_model} to {new_model}")
 
             # Only stop if backend or model changed
             if (backend_changed or model_changed) and self.controller.is_running():
-                logger.info("Stopping current session due to backend/model change")
+                info("Stopping current session due to backend/model change")
                 self.controller.stop()
 
             # Save all settings to database
@@ -1117,6 +1173,24 @@ class MainWindow:
             # Save debug flag
             self.database.save_setting('debug_enabled', 'true' if self.debug_var.get() else 'false')
 
+            # Save log filters
+            try:
+                log_filters = {}
+                for level, var in self.log_filter_vars.items():
+                    log_filters[level] = var.get()
+
+                # Save to database
+                from src.core.logging_controller import get_log_controller
+                log_controller = get_log_controller()
+                success = log_controller.update_log_filters(log_filters)
+
+                if success:
+                    info("Log filters saved to database")
+                else:
+                    warning("Failed to save log filters to database")
+            except Exception as e:
+                error(f"Failed to save log filters: {e}")
+
             # Validate and save commands JSON
             try:
                 import json
@@ -1137,19 +1211,19 @@ class MainWindow:
 
                 # Save commands JSON to database
                 self.database.save_commands_json(commands_json_text)
-                logger.info("Commands JSON saved to database")
+                info("Commands JSON saved to database")
 
                 # Update Whisper backend's command registry if active
                 if self.controller.current_backend and self.controller.backend_type == 'whisper':
                     if hasattr(self.controller.current_backend, 'command_registry'):
                         success = self.controller.current_backend.command_registry.update_from_json(commands_json_text)
                         if success:
-                            logger.info("Commands updated in active Whisper backend")
+                            info("Commands updated in active Whisper backend")
                         else:
-                            logger.warning("Failed to update commands in active backend")
+                            warning("Failed to update commands in active backend")
 
             except Exception as e:
-                logger.error(f"Failed to save commands JSON: {e}")
+                error(f"Failed to save commands JSON: {e}")
                 messagebox.showerror(
                     "Error",
                     f"Failed to save commands JSON:\n{str(e)}"
@@ -1165,7 +1239,7 @@ class MainWindow:
                     enabled=self.voice_commands_enabled_var.get(),
                     max_command_words=self.voice_max_words_var.get()
                 )
-                logger.info("Voice command settings saved to database")
+                info("Voice command settings saved to database")
 
                 # Update Whisper backend settings (whether active or not)
                 if self.controller.current_backend and self.controller.backend_type == 'whisper':
@@ -1178,11 +1252,11 @@ class MainWindow:
                             max_command_words=self.voice_max_words_var.get()
                         )
                         if self.controller.is_running():
-                            logger.info("Voice command settings applied to active backend")
+                            info("Voice command settings applied to active backend")
                         else:
-                            logger.info("Voice command settings updated in backend (will apply on next start)")
+                            info("Voice command settings updated in backend (will apply on next start)")
             except Exception as e:
-                logger.error(f"Failed to save voice command settings: {e}")
+                error(f"Failed to save voice command settings: {e}")
 
             # Reload config to apply changes
             self.config.reload_from_db()
@@ -1195,7 +1269,7 @@ class MainWindow:
             self._update_ui_from_config()
             self._update_status()
 
-            logger.info("Settings saved and applied successfully")
+            info("Settings saved and applied successfully")
 
         except Exception as e:
             messagebox.showerror(
@@ -1233,12 +1307,11 @@ class MainWindow:
 
     def _on_language_clicked(self, language):
         """Handle language button click"""
-        import logging
-        logger = logging.getLogger(__name__)
+        from src.core.logging_controller import info, debug, warning, error, critical
 
         # Get language code
         lang_code = self.config.languages.get(language, {}).get("code", language)
-        logger.info(f"Language button clicked: {language} (code: {lang_code})")
+        info(f"Language button clicked: {language} (code: {lang_code})")
 
         # Ensure controller uses the correct backend from config
         self.controller.reload_backend_from_config()
@@ -1255,9 +1328,9 @@ class MainWindow:
 
             # Start Whisper in background thread
             def start_whisper():
-                logger.info(f"Starting Whisper backend with language '{lang_code}'")
+                info(f"Starting Whisper backend with language '{lang_code}'")
                 success, message = self.controller.start(lang_code, None)
-                logger.info(f"Start result: success={success}, message={message}")
+                info(f"Start result: success={success}, message={message}")
 
                 # Schedule UI update in main thread with error handling
                 if not success:
@@ -1272,7 +1345,7 @@ class MainWindow:
             last_model = self.database.get_last_used_model(language)
 
             if last_model:
-                logger.info(f"Starting with last used model: {last_model['path']}")
+                info(f"Starting with last used model: {last_model['path']}")
                 success, message = self.controller.restart(lang_code, last_model["path"])
                 if not success:
                     messagebox.showerror("Error", f"Failed to start Vosk:\n{message}")
@@ -1282,12 +1355,12 @@ class MainWindow:
                 matching_models = [m for m in models if m["language"] == language]
 
                 if matching_models:
-                    logger.info(f"Starting with first matching model: {matching_models[0]['path']}")
+                    info(f"Starting with first matching model: {matching_models[0]['path']}")
                     success, message = self.controller.restart(lang_code, matching_models[0]["path"])
                     if not success:
                         messagebox.showerror("Error", f"Failed to start Vosk:\n{message}")
                 else:
-                    logger.warning(f"No models found for language: {language}")
+                    warning(f"No models found for language: {language}")
                     messagebox.showwarning("No Models", f"No Vosk models found for {language}")
 
             self._update_status()
@@ -1349,11 +1422,10 @@ class MainWindow:
 
     def _update_ui_from_config(self):
         """Update UI elements based on current config values"""
-        import logging
-        logger = logging.getLogger(__name__)
+        from src.core.logging_controller import info, debug, warning, error, critical
 
         # Log current backend
-        logger.info(f"Updating UI with backend: {self.config.backend}")
+        info(f"Updating UI with backend: {self.config.backend}")
 
         # Update window title
         backend_text = f" [{self.config.backend.upper()}]"
@@ -1432,7 +1504,7 @@ class MainWindow:
                 else:
                     self.voice_commands_label.config(text="Solo Whisper", foreground="gray")
         except Exception as e:
-            import logging
+            # import logging
             logging.getLogger(__name__).debug(f"Error updating voice command status: {e}")
             self.voice_commands_label.config(text="Deshabilitado", foreground="gray")
 

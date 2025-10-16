@@ -5,22 +5,21 @@ Provides high-performance speech transcription using faster-whisper
 with GPU acceleration for real-time dictation.
 """
 
-import logging
 import threading
 import queue
 import time
 from typing import Optional, Callable, Dict, Any
 import numpy as np
 
-logger = logging.getLogger(__name__)
+from src.core.logging_controller import info, debug, warning, error, critical
 
 try:
     from faster_whisper import WhisperModel
     FASTER_WHISPER_AVAILABLE = True
-    logger.info("faster-whisper available for GPU acceleration")
+    info("faster-whisper available for GPU acceleration")
 except ImportError:
     FASTER_WHISPER_AVAILABLE = False
-    logger.warning("faster-whisper not available, install with: pip install faster-whisper")
+    warning("faster-whisper not available, install with: pip install faster-whisper")
 
 
 class WhisperTranscriber:
@@ -78,7 +77,7 @@ class WhisperTranscriber:
                 return True
 
             try:
-                logger.info(f"Loading Whisper model '{self.model_size}' on {self.device}...")
+                info(f"Loading Whisper model '{self.model_size}' on {self.device}...")
                 start_time = time.time()
 
                 # Check CUDA availability before trying to load on GPU
@@ -86,7 +85,7 @@ class WhisperTranscriber:
                     try:
                         import torch
                         if not torch.cuda.is_available():
-                            logger.warning("CUDA requested but not available, falling back to CPU")
+                            warning("CUDA requested but not available, falling back to CPU")
                             self.device = "cpu"
                             self.compute_type = "float32"
                     except ImportError:
@@ -99,14 +98,14 @@ class WhisperTranscriber:
                 )
 
                 load_time = time.time() - start_time
-                logger.info(f"Model loaded in {load_time:.2f} seconds on {self.device}")
+                info(f"Model loaded in {load_time:.2f} seconds on {self.device}")
                 self.is_model_loaded = True
                 return True
 
             except Exception as e:
                 error_msg = str(e)
                 # Log the full error
-                logger.error(f"Failed to load Whisper model: {error_msg}")
+                error(f"Failed to load Whisper model: {error_msg}")
 
                 # Check if it's a CUDA memory error
                 if "CUDA out of memory" in error_msg or "out of memory" in error_msg.lower():
@@ -116,7 +115,7 @@ class WhisperTranscriber:
                         if torch.cuda.is_available():
                             memory_allocated = torch.cuda.memory_allocated() / 1024**3
                             memory_reserved = torch.cuda.memory_reserved() / 1024**3
-                            logger.error(f"GPU memory status - Allocated: {memory_allocated:.2f} GB, Reserved: {memory_reserved:.2f} GB")
+                            error(f"GPU memory status - Allocated: {memory_allocated:.2f} GB, Reserved: {memory_reserved:.2f} GB")
                     except:
                         pass
 
@@ -143,11 +142,11 @@ class WhisperTranscriber:
                     import torch
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
-                        logger.info("CUDA cache cleared")
+                        info("CUDA cache cleared")
                 except ImportError:
                     pass  # torch not available, that's fine
 
-                logger.info("Whisper model unloaded and memory freed")
+                info("Whisper model unloaded and memory freed")
 
     def transcribe(self,
                    audio: np.ndarray,
@@ -169,7 +168,7 @@ class WhisperTranscriber:
                 return None
 
         if len(audio) == 0:
-            logger.warning("Empty audio array provided")
+            warning("Empty audio array provided")
             return None
 
         try:
@@ -179,7 +178,7 @@ class WhisperTranscriber:
             # Use specified language or default
             transcribe_language = language or self.default_language
 
-            logger.debug(f"Transcribing {audio_duration:.2f}s of audio with language: {transcribe_language}")
+            debug(f"Transcribing {audio_duration:.2f}s of audio with language: {transcribe_language}")
 
             # Run transcription
             segments, info = self.model.transcribe(
@@ -231,11 +230,11 @@ class WhisperTranscriber:
                 'segments': [{'text': seg.text, 'start': seg.start, 'end': seg.end} for seg in segments]
             }
 
-            logger.debug(f"Transcription: '{full_text}' (RTF: {result['real_time_factor']:.2f})")
+            debug(f"Transcription: '{full_text}' (RTF: {result['real_time_factor']:.2f})")
             return result
 
         except Exception as e:
-            logger.error(f"Transcription failed: {e}")
+            error(f"Transcription failed: {e}")
             return None
 
     def get_supported_languages(self) -> list:
@@ -328,7 +327,7 @@ class TranscriptionWorker:
     def start(self, language: Optional[str] = None):
         """Start transcription worker."""
         if self.is_running:
-            logger.warning("Transcription worker already running")
+            warning("Transcription worker already running")
             return
 
         self.is_running = True
@@ -338,7 +337,7 @@ class TranscriptionWorker:
         self.worker_thread.daemon = True
         self.worker_thread.start()
 
-        logger.info("Started transcription worker")
+        info("Started transcription worker")
 
     def stop(self):
         """Stop transcription worker."""
@@ -353,7 +352,7 @@ class TranscriptionWorker:
         if self.worker_thread:
             self.worker_thread.join(timeout=1.0)
 
-        logger.info("Stopped transcription worker")
+        info("Stopped transcription worker")
 
     def add_audio(self, audio: np.ndarray):
         """
@@ -396,5 +395,5 @@ class TranscriptionWorker:
             except queue.Empty:
                 continue
             except Exception as e:
-                logger.error(f"Worker loop error: {e}")
+                error(f"Worker loop error: {e}")
                 self.on_error(f"Worker error: {e}")

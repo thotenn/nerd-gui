@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from src.ui.main_window import MainWindow
 from src.core.config import Config
 from src.core.database import Database
+from src.core.logging_controller import configure_logging
 
 
 def setup_logging(debug_enabled: bool = False):
@@ -53,7 +54,7 @@ def setup_logging(debug_enabled: bool = False):
 
     # Reduce noise from pyaudio and other verbose libraries
     logging.getLogger('pyaudio').setLevel(logging.WARNING)
-    logging.getLogger('faster_whisper').setLevel(logging.INFO)
+    logging.getLogger('faster_whisper').setLevel(logging.WARNING)
 
     logger = logging.getLogger(__name__)
     logger.info("=" * 60)
@@ -82,6 +83,9 @@ def main():
 
     # Setup logging with debug flag from config
     setup_logging(debug_enabled=config.debug_enabled)
+
+    # Configure our centralized logging controller
+    configure_logging(database=db)
 
     # Create and run GUI
     root = tk.Tk()

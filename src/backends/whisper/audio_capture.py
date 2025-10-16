@@ -11,9 +11,7 @@ import threading
 import queue
 import time
 from typing import Optional, Callable
-import logging
-
-logger = logging.getLogger(__name__)
+from src.core.logging_controller import info, debug, warning, error, critical
 
 
 class MicrophoneStream:
@@ -54,7 +52,7 @@ class MicrophoneStream:
     def start(self):
         """Start recording audio from microphone."""
         if self.is_recording:
-            logger.warning("Already recording")
+            warning("Already recording")
             return
 
         self.is_recording = True
@@ -79,7 +77,7 @@ class MicrophoneStream:
         self.recording_thread.daemon = True
         self.recording_thread.start()
 
-        logger.info(f"Started recording at {self.sample_rate}Hz" +
+        info(f"Started recording at {self.sample_rate}Hz" +
                    (f" on device {self.device_index}" if self.device_index else ""))
 
     def stop(self):
@@ -97,12 +95,12 @@ class MicrophoneStream:
             self.recording_thread.join(timeout=1.0)
 
         self.audio.terminate()
-        logger.info("Stopped recording")
+        info("Stopped recording")
 
     def _audio_callback(self, in_data, frame_count, time_info, status):
         """PyAudio callback for incoming audio data."""
         if status:
-            logger.warning(f"Audio callback status: {status}")
+            warning(f"Audio callback status: {status}")
 
         self.audio_queue.put(in_data)
         return (None, pyaudio.paContinue)
@@ -171,11 +169,11 @@ class VoiceActivityDetector:
             import webrtcvad
             self.vad = webrtcvad.Vad(3)  # Aggressiveness level 3 (highest)
             self.use_webrtcvad = True
-            logger.info("Using WebRTC VAD")
+            info("Using WebRTC VAD")
         except ImportError:
             self.vad = None
             self.use_webrtcvad = False
-            logger.warning("WebRTC VAD not available, using energy-based detection")
+            warning("WebRTC VAD not available, using energy-based detection")
 
     def process_frame(self, audio_frame: np.ndarray) -> tuple[bool, Optional[np.ndarray]]:
         """
@@ -208,12 +206,12 @@ class VoiceActivityDetector:
         if is_speech:
             if not self.is_speaking:
                 self.is_speaking = True
-                logger.info("Speech started (WebRTC VAD)")
+                info("Speech started (WebRTC VAD)")
             self.silence_counter = 0
         else:
             if self.is_speaking:
                 self.silence_counter += 1
-                logger.debug(f"Silence detected: {self.silence_counter}/{self.silence_frames} frames")
+                debug(f"Silence detected: {self.silence_counter}/{self.silence_frames} frames")
                 if self.silence_counter >= self.silence_frames:
                     # Speech ended, return buffered audio
                     self.is_speaking = False
@@ -221,7 +219,7 @@ class VoiceActivityDetector:
                     duration = len(audio_chunk) / self.sample_rate
                     self.audio_buffer = []
                     self.silence_counter = 0
-                    logger.info(f"Speech ended (WebRTC VAD): {len(audio_chunk)} samples ({duration:.2f}s)")
+                    info(f"Speech ended (WebRTC VAD): {len(audio_chunk)} samples ({duration:.2f}s)")
                     return (False, audio_chunk)
 
         return (is_speech, None)
@@ -236,13 +234,13 @@ class VoiceActivityDetector:
         if energy > self.energy_threshold:
             if not self.is_speaking:
                 self.is_speaking = True
-                logger.info(f"Speech started (energy-based): energy={energy:.4f} > threshold={self.energy_threshold:.4f}")
+                info(f"Speech started (energy-based): energy={energy:.4f} > threshold={self.energy_threshold:.4f}")
             self.silence_counter = 0
-            logger.debug(f"Speech active: energy={energy:.4f}")
+            debug(f"Speech active: energy={energy:.4f}")
         else:
             if self.is_speaking:
                 self.silence_counter += 1
-                logger.debug(f"Silence detected: {self.silence_counter}/{self.silence_frames} frames (energy={energy:.4f})")
+                debug(f"Silence detected: {self.silence_counter}/{self.silence_frames} frames (energy={energy:.4f})")
                 if self.silence_counter >= self.silence_frames:
                     # Speech ended, return buffered audio
                     self.is_speaking = False
@@ -250,11 +248,11 @@ class VoiceActivityDetector:
                     duration = len(audio_chunk) / self.sample_rate
                     self.audio_buffer = []
                     self.silence_counter = 0
-                    logger.info(f"Speech ended (energy-based): {len(audio_chunk)} samples ({duration:.2f}s)")
+                    info(f"Speech ended (energy-based): {len(audio_chunk)} samples ({duration:.2f}s)")
                     return (False, audio_chunk)
             else:
                 # Not speaking and low energy - just noise
-                logger.debug(f"Background noise: energy={energy:.4f}")
+                debug(f"Background noise: energy={energy:.4f}")
 
         return (energy > self.energy_threshold, None)
 
@@ -302,7 +300,7 @@ class AudioCapture:
     def start(self):
         """Start audio capture with VAD."""
         if self.is_running:
-            logger.warning("Audio capture already running")
+            warning("Audio capture already running")
             return
 
         self.is_running = True
@@ -312,7 +310,7 @@ class AudioCapture:
         self.capture_thread.daemon = True
         self.capture_thread.start()
 
-        logger.info("Started audio capture with VAD")
+        info("Started audio capture with VAD")
 
     def stop(self):
         """Stop audio capture."""
@@ -326,7 +324,7 @@ class AudioCapture:
             self.capture_thread.join(timeout=1.0)
 
         self.vad.reset()
-        logger.info("Stopped audio capture")
+        info("Stopped audio capture")
 
     def _capture_loop(self):
         """Main capture loop that runs in background thread."""
@@ -345,7 +343,7 @@ class AudioCapture:
                 # Minimum chunk size to avoid processing very short audio
                 min_samples = int(self.min_audio_length * self.sample_rate)
                 if len(audio_chunk) >= min_samples:
-                    logger.debug(f"Audio chunk ready: {len(audio_chunk)} samples ({len(audio_chunk)/self.sample_rate:.2f}s)")
+                    debug(f"Audio chunk ready: {len(audio_chunk)} samples ({len(audio_chunk)/self.sample_rate:.2f}s)")
                     self.on_audio_chunk(audio_chunk)
                 else:
-                    logger.debug(f"Audio chunk too short: {len(audio_chunk)} samples ({len(audio_chunk)/self.sample_rate:.2f}s) < {min_samples} samples ({self.min_audio_length}s)")
+                    debug(f"Audio chunk too short: {len(audio_chunk)} samples ({len(audio_chunk)/self.sample_rate:.2f}s) < {min_samples} samples ({self.min_audio_length}s)")

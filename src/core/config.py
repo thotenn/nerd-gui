@@ -83,7 +83,8 @@ class Config:
                         key, value = line.split('=', 1)
                         env_vars[key.strip()] = value.strip()
         except Exception as e:
-            print(f"Warning: Could not load .env file: {e}")
+            from src.core.logging_controller import warning
+            warning(f"Could not load .env file: {e}")
 
         return env_vars
 
@@ -216,7 +217,8 @@ class Config:
             self.debug_enabled = debug_str.lower() in ('true', '1', 'yes')
 
         except Exception as e:
-            print(f"Warning: Could not reload config from database: {e}")
+            from src.core.logging_controller import warning
+            warning(f"Could not reload config from database: {e}")
 
     def migrate_from_env(self):
         """
@@ -232,7 +234,8 @@ class Config:
         if self.database.is_migration_complete():
             return
 
-        print("Migrating configuration from .env to database...")
+        from src.core.logging_controller import info
+        info("Migrating configuration from .env to database...")
 
         # Load environment variables again to get potential Whisper settings
         env_vars = self._load_env()
@@ -273,12 +276,12 @@ class Config:
             if value is not None and value.strip():  # Only migrate if value exists
                 self.database.save_setting(key, value)
                 migrated_count += 1
-                print(f"  Migrated: {key} = {value}")
+                info(f"Migrated: {key} = {value}")
 
         # Mark migration as complete
         self.database.mark_migration_complete()
 
         if migrated_count > 0:
-            print(f"Migration complete! Migrated {migrated_count} settings from .env to database.")
+            info(f"Migration complete! Migrated {migrated_count} settings from .env to database.")
         else:
-            print("Migration complete! No settings found in .env (using defaults).")
+            info("Migration complete! No settings found in .env (using defaults).")

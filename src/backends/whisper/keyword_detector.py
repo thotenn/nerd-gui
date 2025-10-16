@@ -9,9 +9,8 @@ import string
 from typing import Optional
 from dataclasses import dataclass
 from enum import Enum
-import logging
 
-logger = logging.getLogger(__name__)
+from src.core.logging_controller import info, debug, warning, error, critical
 
 
 class DetectionMode(Enum):
@@ -88,19 +87,19 @@ class KeywordDetector:
         text_clean = text.lower().strip()
         current_time = time.time()
 
-        logger.debug(f"Processing text: '{text_clean}', current mode: {self.current_mode}")
+        debug(f"Processing text: '{text_clean}', current mode: {self.current_mode}")
 
         # Check for command timeout
         if self.current_mode == DetectionMode.COMMAND_ACTIVE:
             if current_time - self.keyword_detected_time > self.timeout_seconds:
-                logger.debug("Command timeout, returning to normal mode")
+                debug("Command timeout, returning to normal mode")
                 self._reset_to_normal()
                 return DetectionResult(detected_keyword=False, mode=DetectionMode.NORMAL)
 
         # Check for keyword in normal mode
         if self.current_mode == DetectionMode.NORMAL:
             if self._detect_keyword(text_clean):
-                logger.info(f"Keyword detected: '{self.keyword}'")
+                info(f"Keyword detected: '{self.keyword}'")
                 self.current_mode = DetectionMode.COMMAND_ACTIVE
                 self.keyword_detected_time = current_time
 
@@ -200,7 +199,7 @@ class KeywordDetector:
 
             # Check if this command exists in registry
             if self.command_registry.get_command(command_candidate):
-                logger.info(f"Found multi-word command: '{command_candidate}' ({num_words} words)")
+                info(f"Found multi-word command: '{command_candidate}' ({num_words} words)")
                 remaining_words = words[num_words:]
                 remaining_text = ' '.join(remaining_words) if remaining_words else None
                 return {
@@ -209,7 +208,7 @@ class KeywordDetector:
                 }
 
         # No command found - return None (all text will be typed)
-        logger.debug(f"No command found in first {max_words} words, text will be typed")
+        debug(f"No command found in first {max_words} words, text will be typed")
         return None
 
     def _extract_command(self, text: str) -> Optional[str]:
@@ -222,9 +221,9 @@ class KeywordDetector:
     def _process_command(self, command: str, remaining_text: Optional[str] = None) -> DetectionResult:
         """Process detected command"""
         if remaining_text:
-            logger.info(f"Command detected: '{command}', remaining text: '{remaining_text}'")
+            info(f"Command detected: '{command}', remaining text: '{remaining_text}'")
         else:
-            logger.info(f"Command detected: '{command}'")
+            info(f"Command detected: '{command}'")
         self._reset_to_normal()
 
         return DetectionResult(
@@ -295,9 +294,9 @@ class KeywordDetector:
         self.keyword = keyword.lower().strip()
         self._compile_patterns()
         self.reset()
-        logger.info(f"Keyword updated to: '{self.keyword}'")
+        info(f"Keyword updated to: '{self.keyword}'")
 
     def update_timeout(self, timeout_seconds: float):
         """Update command timeout"""
         self.timeout_seconds = max(1.0, min(10.0, timeout_seconds))
-        logger.info(f"Timeout updated to: {self.timeout_seconds}s")
+        info(f"Timeout updated to: {self.timeout_seconds}s")

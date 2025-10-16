@@ -119,6 +119,33 @@ class Database:
                 """, (datetime.now().isoformat(), datetime.now().isoformat()))
                 print("Initialized default voice command settings")
 
+            # Create log filters table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS log_filters (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    level TEXT NOT NULL UNIQUE,
+                    enabled BOOLEAN NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+
+            # Initialize default log filters (all enabled by default)
+            cursor.execute("SELECT COUNT(*) FROM log_filters")
+            if cursor.fetchone()[0] == 0:
+                default_filters = [
+                    ('INFO', True),
+                    ('WARNING', True),
+                    ('ERROR', True),
+                    ('CRITICAL', True)
+                ]
+                for level, enabled in default_filters:
+                    cursor.execute("""
+                        INSERT INTO log_filters (level, enabled, created_at, updated_at)
+                        VALUES (?, ?, ?, ?)
+                    """, (level, enabled, datetime.now().isoformat(), datetime.now().isoformat()))
+                print("Initialized default log filters")
+
         except Exception as e:
             print(f"Database migration warning: {e}")
     
@@ -564,3 +591,78 @@ class Database:
             JSON string with commands, or None if not found
         """
         return self.get_setting('voice_commands_json', None)
+
+    # Log filters methods
+
+    def save_log_filters(self, filters: dict) -> bool:
+        """
+        Save log filter settings.
+
+        Args:
+            filters: Dictionary with filter settings
+                    {'INFO': bool, 'WARNING': bool, 'ERROR': bool, 'CRITICAL': bool}
+
+        Returns:
+            True if successful
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            for level, enabled in filters.items():
+                if level in ['INFO', 'WARNING', 'ERROR', 'CRITICAL']:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO log_filters
+                        (id, level, enabled, created_at, updated_at)
+                        VALUES (
+                            COALESCE((SELECT id FROM log_filters WHERE level = ?),
+                                     (SELECT COALESCE(MAX(id), 0) + 1 FROM log_filters)),
+                            ?, ?,
+                            COALESCE((SELECT created_at FROM log_filters WHERE level = ?), ?),
+                            ?
+                        )
+                    """, (level, level, 1 if enabled else 0, level,
+                          datetime.now().isoformat(), datetime.now().isoformat()))
+
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error saving log filters: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_log_filters(self) -> dict:
+        """
+        Get current log filter settings.
+
+        Returns:
+            Dictionary with filter settings
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("SELECT level, enabled FROM log_filters")
+            results = cursor.fetchall()
+
+            # Return defaults if no filters found
+            if not results:
+                return {
+                    'INFO': True,
+                    'WARNING': True,
+                    'ERROR': True,
+                    'CRITICAL': True
+                }
+
+            return {row[0]: bool(row[1]) for row in results}
+        except Exception as e:
+            print(f"Error getting log filters: {e}")
+            return {
+                'INFO': True,
+                'WARNING': True,
+                'ERROR': True,
+                'CRITICAL': True
+            }
+        finally:
+            conn.close()

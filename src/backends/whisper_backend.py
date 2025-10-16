@@ -5,12 +5,10 @@ Provides GPU-accelerated speech transcription using faster-whisper
 with real-time audio capture and keyboard output.
 """
 
-import logging
 import time
 from typing import Optional, List, Dict, Any
 from .base_backend import BaseBackend, BackendStatus
-
-logger = logging.getLogger(__name__)
+from src.core.logging_controller import info, debug, warning, error, critical
 
 # Try to import Whisper components
 try:
@@ -21,11 +19,11 @@ try:
     from .whisper.command_registry import CommandRegistry
     from .whisper.command_executor import CommandExecutor
     WHISPER_AVAILABLE = True
-    logger.info("Whisper backend components imported successfully")
+    info("Whisper backend components imported successfully")
 except ImportError as e:
     WHISPER_AVAILABLE = False
-    logger.warning(f"Whisper backend not available: {e}")
-    logger.info("Install with: ./install_whisper_backend.sh")
+    warning(f"Whisper backend not available: {e}")
+    info("Install with: ./install_whisper_backend.sh")
 
 
 class WhisperBackend(BaseBackend):
@@ -145,11 +143,11 @@ class WhisperBackend(BaseBackend):
             True if dictation started successfully
         """
         if self.status == BackendStatus.ERROR:
-            logger.error("Cannot start Whisper backend: in error state")
+            error("Cannot start Whisper backend: in error state")
             return False
 
         if self.is_running:
-            logger.warning("Whisper backend already running")
+            warning("Whisper backend already running")
             return True
 
         try:
@@ -212,7 +210,7 @@ class WhisperBackend(BaseBackend):
             self.transcription_worker.start(language)
 
             # Start audio capture with configured parameters
-            logger.info(f"Starting audio capture: device_index={self.device_index}, "
+            info(f"Starting audio capture: device_index={self.device_index}, "
                        f"silence_duration={self.silence_duration}s, "
                        f"energy_threshold={self.energy_threshold}, "
                        f"min_audio_length={self.min_audio_length}s")
@@ -234,13 +232,13 @@ class WhisperBackend(BaseBackend):
             self.is_first_chunk = True  # Reset for new session
 
             self._set_status(BackendStatus.RUNNING)
-            logger.info(f"Whisper dictation started with language '{language}'")
+            info(f"Whisper dictation started with language '{language}'")
 
             return True
 
         except Exception as e:
             error_msg = f"Failed to start Whisper backend: {e}"
-            logger.error(error_msg)
+            error(error_msg)
             self._set_status(BackendStatus.ERROR, error_msg)
             return False
 
@@ -252,7 +250,7 @@ class WhisperBackend(BaseBackend):
             True if dictation stopped successfully
         """
         if not self.is_running:
-            logger.warning("Whisper backend not running")
+            warning("Whisper backend not running")
             return True
 
         try:
@@ -275,7 +273,7 @@ class WhisperBackend(BaseBackend):
             session_duration = None
             if self.session_start_time:
                 session_duration = time.time() - self.session_start_time
-                logger.info(f"Session ended. Duration: {session_duration:.1f}s, "
+                info(f"Session ended. Duration: {session_duration:.1f}s, "
                           f"Text typed: {self.total_text_typed} chars")
 
             # Update session info
@@ -291,16 +289,16 @@ class WhisperBackend(BaseBackend):
             # IMPORTANT: Unload model to free VRAM
             if self.transcriber:
                 self.transcriber.unload_model()
-                logger.info("Whisper model unloaded from VRAM")
+                info("Whisper model unloaded from VRAM")
 
             self._set_status(BackendStatus.STOPPED)
-            logger.info("Whisper dictation stopped")
+            info("Whisper dictation stopped")
 
             return True
 
         except Exception as e:
             error_msg = f"Failed to stop Whisper backend: {e}"
-            logger.error(error_msg)
+            error(error_msg)
             self._set_status(BackendStatus.ERROR, error_msg)
             return False
 
@@ -402,14 +400,14 @@ class WhisperBackend(BaseBackend):
                             self.keyboard_output.type_text(processed_before, enable_correction=False)
                             self.total_text_typed += len(processed_before)
                             text_length = len(processed_before)
-                            logger.debug(f"Typed text before keyword: '{processed_before}'")
+                            debug(f"Typed text before keyword: '{processed_before}'")
 
                         # IMPORTANT: Wait for text to finish typing before executing command
                         # xdotool type has a default delay of ~12ms per character
                         # Add buffer to ensure text completes before command executes
                         if text_length > 0:
                             typing_time = (text_length * 0.012) + 0.1  # 12ms per char + 100ms buffer
-                            logger.debug(f"Waiting {typing_time:.2f}s for text to complete before command")
+                            debug(f"Waiting {typing_time:.2f}s for text to complete before command")
                             time.sleep(typing_time)
 
                         # Now execute the command
@@ -420,11 +418,11 @@ class WhisperBackend(BaseBackend):
                         if command:
                             success = self.command_executor.execute_command(command)
                             if success:
-                                logger.info(f"Executed voice command: {command.description}")
+                                info(f"Executed voice command: {command.description}")
                             else:
-                                logger.warning(f"Failed to execute command: {command.description}")
+                                warning(f"Failed to execute command: {command.description}")
                         else:
-                            logger.warning(f"Unknown voice command: '{detection_result.command_candidate}'")
+                            warning(f"Unknown voice command: '{detection_result.command_candidate}'")
 
                         # Type remaining text if present (text after the command)
                         if detection_result.remaining_text:
@@ -435,7 +433,7 @@ class WhisperBackend(BaseBackend):
                                 processed_remaining = ' ' + processed_remaining
                                 self.keyboard_output.type_text(processed_remaining, enable_correction=False)
                                 self.total_text_typed += len(processed_remaining)
-                                logger.info(f"Typed remaining text after command: '{processed_remaining}'")
+                                info(f"Typed remaining text after command: '{processed_remaining}'")
 
                         # Update timestamp
                         self.last_transcription_time = time.time()
@@ -458,15 +456,15 @@ class WhisperBackend(BaseBackend):
                             self.keyboard_output.type_text(processed_before, enable_correction=False)
                             self.total_text_typed += len(processed_before)
                             text_length = len(processed_before)
-                            logger.debug(f"Typed text before keyword: '{processed_before}'")
+                            debug(f"Typed text before keyword: '{processed_before}'")
 
                             # Wait for text to finish typing
                             if text_length > 0:
                                 typing_time = (text_length * 0.012) + 0.05  # Shorter buffer since no command follows
-                                logger.debug(f"Waiting {typing_time:.2f}s for text to complete")
+                                debug(f"Waiting {typing_time:.2f}s for text to complete")
                                 time.sleep(typing_time)
 
-                        logger.debug(f"Keyword '{self.keyword_detector.keyword}' detected, waiting for command...")
+                        debug(f"Keyword '{self.keyword_detector.keyword}' detected, waiting for command...")
                         return
 
             # Process the text normally (no command detected)
@@ -476,10 +474,10 @@ class WhisperBackend(BaseBackend):
             # This prevents chunks from being concatenated without spaces
             if not self.is_first_chunk:
                 processed_text = ' ' + processed_text
-                logger.debug("Added leading space to separate from previous chunk")
+                debug("Added leading space to separate from previous chunk")
             else:
                 self.is_first_chunk = False
-                logger.debug("First chunk of session - no leading space")
+                debug("First chunk of session - no leading space")
 
             # Type the processed text WITHOUT correction
             # Each Whisper chunk is independent (not streaming), so we just append text
@@ -489,12 +487,12 @@ class WhisperBackend(BaseBackend):
             self.total_text_typed += len(processed_text)
             self.last_transcription_time = time.time()
 
-            logger.debug(f"Typed: '{processed_text}' "
+            debug(f"Typed: '{processed_text}' "
                         f"(confidence: {result.get('avg_confidence', 0):.2f}, "
                         f"RTF: {result.get('real_time_factor', 0):.2f})")
 
         except Exception as e:
-            logger.error(f"Failed to handle transcription result: {e}")
+            error(f"Failed to handle transcription result: {e}")
             self._on_error(f"Result handling error: {e}")
 
     def _on_error(self, error_message: str):
@@ -504,7 +502,7 @@ class WhisperBackend(BaseBackend):
         Args:
             error_message: Error message
         """
-        logger.error(f"Whisper backend error: {error_message}")
+        error(f"Whisper backend error: {error_message}")
         if self.status != BackendStatus.ERROR:
             self._set_status(BackendStatus.ERROR, error_message)
 
@@ -517,7 +515,7 @@ class WhisperBackend(BaseBackend):
         """
         if self.transcription_worker:
             self.transcription_worker.set_language(language)
-            logger.info(f"Changed transcription language to '{language}'")
+            info(f"Changed transcription language to '{language}'")
 
     def update_model_size(self, new_model_size: str) -> bool:
         """
@@ -529,17 +527,17 @@ class WhisperBackend(BaseBackend):
         Returns:
             True if update successful
         """
-        logger.info(f"Updating Whisper model from '{self.model_size}' to '{new_model_size}'")
+        info(f"Updating Whisper model from '{self.model_size}' to '{new_model_size}'")
 
         # Stop if running
         if self.is_running:
-            logger.info("Stopping current session before model update")
+            info("Stopping current session before model update")
             self.stop()
 
         # Unload current model if loaded
         if self.transcriber and self.transcriber.is_model_loaded:
             self.transcriber.unload_model()
-            logger.info("Previous model unloaded from VRAM")
+            info("Previous model unloaded from VRAM")
 
         # Update model size
         old_model = self.model_size
@@ -549,7 +547,7 @@ class WhisperBackend(BaseBackend):
         if self.transcriber:
             self.transcriber.model_size = new_model_size
             self.transcriber.is_model_loaded = False
-            logger.info(f"Model size updated from '{old_model}' to '{new_model_size}'")
+            info(f"Model size updated from '{old_model}' to '{new_model_size}'")
             return True
 
         return False
@@ -562,21 +560,21 @@ class WhisperBackend(BaseBackend):
         model unloading if CUDA out of memory was the issue.
         """
         if self._status == BackendStatus.ERROR:
-            logger.info(f"Resetting WhisperBackend from ERROR state. Last error: {self._error_message}")
+            info(f"Resetting WhisperBackend from ERROR state. Last error: {self._error_message}")
 
             # If error was CUDA out of memory, unload model to free VRAM
             if self._error_message and "CUDA out of memory" in self._error_message:
-                logger.info("CUDA out of memory detected - unloading model to free VRAM")
+                info("CUDA out of memory detected - unloading model to free VRAM")
                 if self.transcriber and self.transcriber.is_model_loaded:
                     self.transcriber.unload_model()
-                    logger.info("Model unloaded to free VRAM")
+                    info("Model unloaded to free VRAM")
 
             # Reset state
             self._status = BackendStatus.STOPPED
             self._error_message = None
             self.is_first_chunk = True  # Reset for next session
 
-            logger.info("WhisperBackend reset to STOPPED state, ready for retry")
+            info("WhisperBackend reset to STOPPED state, ready for retry")
             return True
         return False
 
@@ -587,7 +585,7 @@ class WhisperBackend(BaseBackend):
 
         if self.transcriber is not None:
             self.transcriber.unload_model()
-        logger.info("Whisper backend cleaned up")
+        info("Whisper backend cleaned up")
 
     # Voice command methods
 
@@ -618,7 +616,7 @@ class WhisperBackend(BaseBackend):
     def _load_voice_command_settings(self):
         """Load voice command settings from database"""
         if not self.database:
-            logger.debug("No database available for voice command settings")
+            debug("No database available for voice command settings")
             return
 
         try:
@@ -643,13 +641,13 @@ class WhisperBackend(BaseBackend):
                     max_command_words=max_command_words,
                     command_registry=self.command_registry
                 )
-                logger.info(f"Voice commands enabled with keyword: '{keyword}', max_command_words: {max_command_words}")
+                info(f"Voice commands enabled with keyword: '{keyword}', max_command_words: {max_command_words}")
             else:
                 self.keyword_detector = None
-                logger.debug("Voice commands disabled")
+                debug("Voice commands disabled")
 
         except Exception as e:
-            logger.error(f"Failed to load voice command settings: {e}")
+            error(f"Failed to load voice command settings: {e}")
             self.voice_commands_enabled = False
 
     def update_voice_command_settings(self, keyword: str, timeout: float,
@@ -697,10 +695,10 @@ class WhisperBackend(BaseBackend):
             else:
                 self.keyword_detector = None
 
-            logger.info(f"Voice command settings updated: keyword='{keyword}', enabled={enabled}, max_command_words={max_command_words}")
+            info(f"Voice command settings updated: keyword='{keyword}', enabled={enabled}, max_command_words={max_command_words}")
 
         except Exception as e:
-            logger.error(f"Failed to update voice command settings: {e}")
+            error(f"Failed to update voice command settings: {e}")
 
     def get_voice_command_status(self) -> dict:
         """Get current voice command status"""
