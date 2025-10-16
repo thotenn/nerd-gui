@@ -26,7 +26,7 @@ class MainWindow:
         # Window configuration
         self.root.title("Dictation Manager")
         # Start with main view size since we show main view initially
-        self.root.geometry("600x350")
+        self.root.geometry("600x300")
         self.root.resizable(True, True)
 
         # Set minimum size for main view
@@ -37,8 +37,8 @@ class MainWindow:
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         x = (screen_width - 600) // 2
-        y = (screen_height - 350) // 2
-        self.root.geometry(f"600x350+{x}+{y}")
+        y = (screen_height - 300) // 2
+        self.root.geometry(f"600x300+{x}+{y}")
 
         # Create main container
         self.container = ttk.Frame(self.root)
@@ -873,7 +873,7 @@ class MainWindow:
         y = self.root.winfo_y()
 
         # Compact size for main view, maintaining position
-        self.root.geometry(f"600x350+{x}+{y}")
+        self.root.geometry(f"600x300+{x}+{y}")
         self.root.minsize(500, 300)
         # No max size restriction for main view (allow free resizing)
 
