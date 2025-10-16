@@ -47,6 +47,12 @@
     "category": "Basic",
     "enabled": true
   },
+  "newline": {
+    "keys": ["Return", "Return"],
+    "description": "Double Enter (new paragraph)",
+    "category": "Basic",
+    "enabled": true
+  },
   "pageup": {
     "keys": ["Prior"],
     "description": "Press Page Up key",

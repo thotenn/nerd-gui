@@ -56,20 +56,40 @@ class CommandExecutor:
             return False
 
     def _execute_keys(self, keys: List[str]) -> bool:
-        """Execute key combination"""
+        """
+        Execute key combination or sequence.
+
+        Automatically detects:
+        - Single key: ["Return"] -> xdotool key Return
+        - Combination (with modifiers): ["Control_L", "c"] -> xdotool key Control_L+c
+        - Sequence (no modifiers): ["Return", "space"] -> xdotool key Return space
+        """
         if not keys:
             return False
 
         try:
+            # List of modifier keys
+            modifiers = {
+                'Control_L', 'Control_R', 'Shift_L', 'Shift_R',
+                'Alt_L', 'Alt_R', 'Super_L', 'Super_R', 'Meta_L', 'Meta_R'
+            }
+
             # Build xdotool command
-            # For key combinations, we use "key" with modifiers
             if len(keys) == 1:
                 # Single key
                 cmd = ['xdotool', 'key', keys[0]]
             else:
-                # Key combination - join with '+'
-                key_combo = '+'.join(keys)
-                cmd = ['xdotool', 'key', key_combo]
+                # Check if this is a combination (has modifiers) or sequence
+                has_modifier = any(key in modifiers for key in keys[:-1])
+
+                if has_modifier:
+                    # Key combination - join with '+' (e.g., Ctrl+C)
+                    key_combo = '+'.join(keys)
+                    cmd = ['xdotool', 'key', key_combo]
+                else:
+                    # Key sequence - pass as separate arguments (e.g., Return space)
+                    # xdotool will execute them in order
+                    cmd = ['xdotool', 'key'] + keys
 
             # Execute command
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
