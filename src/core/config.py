@@ -16,7 +16,15 @@ class Config:
         # Base paths (from .env or defaults)
         self.home_dir = Path.home()
         self.app_dir = Path(env_vars.get("APP_DIR"))
-        self.nerd_dictation_dir = Path(env_vars.get("NERD_DICTATION_DIR"))
+
+        # nerd-dictation: Use local copy from apps/ by default, fallback to env var
+        nerd_dictation_env = env_vars.get("NERD_DICTATION_DIR", "")
+        if nerd_dictation_env and Path(nerd_dictation_env).exists():
+            self.nerd_dictation_dir = Path(nerd_dictation_env)
+        else:
+            # Use local integrated copy
+            self.nerd_dictation_dir = self.app_dir / "apps" / "nerd-dictation"
+
         self.models_dir = Path(env_vars.get("MODELS_DIR"))
 
         # Database

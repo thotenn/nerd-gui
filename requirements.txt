@@ -1,0 +1,40 @@
+# Dictation Manager Requirements
+# Python 3.8+ required
+# Note: Tkinter and sqlite3 come with Python standard library
+
+# ============================================================
+# WHISPER BACKEND DEPENDENCIES (GPU-accelerated)
+# ============================================================
+
+# Core Whisper transcription
+faster-whisper>=0.10.0
+
+# Audio processing
+pyaudio>=0.2.13
+numpy>=1.24.0
+soundfile>=0.12.1
+
+# Voice Activity Detection (optional but recommended)
+webrtcvad>=2.0.10
+
+# GPU acceleration (NVIDIA CUDA required)
+# This will be installed automatically by faster-whisper if CUDA is available
+# nvidia-cudnn-cu12
+
+# ============================================================
+# VOSK BACKEND DEPENDENCIES
+# ============================================================
+# These are installed in apps/nerd-dictation/venv separately
+# See apps/nerd-dictation/requirements.txt for Vosk dependencies
+
+# ============================================================
+# SYSTEM REQUIREMENTS (install via apt)
+# ============================================================
+# sudo apt install -y python3-tk portaudio19-dev xdotool pulseaudio-utils
+
+# ============================================================
+# OPTIONAL DEPENDENCIES
+# ============================================================
+# For future features:
+# pillow>=10.0.0          # Image/icon support
+# psutil>=5.9.0           # Better process monitoring

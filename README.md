@@ -1,6 +1,6 @@
 # Dictation Manager
 
-A Python GUI application to manage [nerd-dictation](https://github.com/ideasman42/nerd-dictation) with support for multiple Vosk language models in Spanish and English.
+A Python GUI application for voice dictation with support for multiple backends (Vosk via integrated [nerd-dictation](https://github.com/ideasman42/nerd-dictation), and Whisper) with support for multiple languages.
 
 ## Features
 
@@ -45,9 +45,11 @@ Edit `.env` with your specific paths:
 
 ```bash
 APP_DIR=/home/tho/soft/ai/dictation
-NERD_DICTATION_DIR=/home/tho/app_folder/nerd-dictation
+NERD_DICTATION_DIR=/home/tho/app_folder/nerd-dictation  # Optional, uses apps/nerd-dictation by default
 MODELS_DIR=/home/tho/.config/nerd-dictation
 ```
+
+**Note**: `NERD_DICTATION_DIR` is optional. The application includes an integrated copy of nerd-dictation at `apps/nerd-dictation/`. If you have a custom installation, you can specify it here.
 
 ### 3. Download Vosk models
 
@@ -64,26 +66,50 @@ wget https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip
 unzip vosk-model-en-us-0.22.zip -d ~/.config/nerd-dictation/
 ```
 
-### 4. Install nerd-dictation
+### 4. Install nerd-dictation (Vosk backend)
 
-Follow instructions from [nerd-dictation repository](https://github.com/ideasman42/nerd-dictation):
+The repository includes nerd-dictation at `apps/nerd-dictation/`. You need to set up its virtual environment:
 
 ```bash
-cd /home/tho/app_folder/
-git clone https://github.com/ideasman42/nerd-dictation.git
-cd nerd-dictation
+cd /home/tho/soft/ai/dictation/apps/nerd-dictation
 python3 -m venv venv
 source venv/bin/activate
+pip install --upgrade pip
 pip install -r requirements.txt
+pip install .
+deactivate
+```
+
+**Note**: If you prefer to use a separate nerd-dictation installation, clone it elsewhere and specify the path in `.env` via `NERD_DICTATION_DIR`.
+
+### 5. Install Whisper backend (optional, GPU recommended)
+
+For the Whisper backend with GPU acceleration:
+
+```bash
+cd /home/tho/soft/ai/dictation
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+# For GPU support (requires NVIDIA CUDA)
+pip install nvidia-cudnn-cu12
+deactivate
 ```
 
 ## Usage
 
 ### Starting the application
 
+**From Applications Menu (Easiest):**
+
+After running the installer, search for "Dictation Manager" in your applications launcher (GNOME Activities, KDE Menu, etc.)
+
+**From Terminal:**
+
 ```bash
 cd /home/tho/soft/ai/dictation
-./main.py
+./run.sh
 ```
 
 Or with explicit Python (must be system Python with tkinter):
@@ -115,16 +141,24 @@ dictation/
 ├── .env.example             # Configuration template
 ├── README.md                # This file
 ├── CLAUDE.md                # Claude Code guidance
+├── apps/
+│   └── nerd-dictation/     # Integrated nerd-dictation (Vosk backend)
 ├── data/
 │   └── dictation.db        # SQLite database (auto-created)
 ├── logs/                    # Application logs
 └── src/
+    ├── backends/
+    │   ├── base_backend.py         # Backend interface
+    │   ├── vosk_backend.py         # Vosk implementation
+    │   ├── whisper_backend.py      # Whisper implementation
+    │   └── whisper/                # Whisper components
     ├── core/
-    │   ├── config.py              # Configuration and .env management
-    │   ├── database.py            # SQLite operations
-    │   └── dictation_controller.py # nerd-dictation subprocess control
+    │   ├── config.py               # Configuration and .env management
+    │   ├── database.py             # SQLite operations
+    │   ├── dictation_controller.py # Backend management
+    │   └── logging_controller.py   # Centralized logging
     └── ui/
-        └── main_window.py         # Tkinter GUI
+        └── main_window.py          # Tkinter GUI
 ```
 
 ## Advanced Configuration
