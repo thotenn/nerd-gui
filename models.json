@@ -78,13 +78,6 @@
       "flag": "🇪🇸",
       "vosk_supported": true,
       "whisper_supported": true
-    },
-    "fr": {
-      "name": "French",
-      "code": "fr",
-      "flag": "🇫🇷",
-      "vosk_supported": false,
-      "whisper_supported": true
     }
   }
 }

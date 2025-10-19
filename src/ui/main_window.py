@@ -76,19 +76,33 @@ class MainWindow:
         # Configure grid
         self.main_frame.columnconfigure(0, weight=1)
 
+        # Title frame with Settings button on the right
+        title_frame = ttk.Frame(self.main_frame)
+        title_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 20))
+        title_frame.columnconfigure(0, weight=1)
+
         # Title
         title_label = ttk.Label(
-            self.main_frame,
+            title_frame,
             text="🎤 Dictation Manager",
             font=("Arial", 18, "bold")
         )
-        title_label.grid(row=0, column=0, pady=(0, 20))
+        title_label.grid(row=0, column=0, sticky=tk.W)
 
-        # Status frame
+        # Settings button (icon only)
+        self.settings_btn = ttk.Button(
+            title_frame,
+            text="⚙",
+            command=self._on_settings_clicked,
+            width=3
+        )
+        self.settings_btn.grid(row=0, column=1, sticky=tk.E, padx=(10, 0))
+
+        # Status frame (will include STOP button)
         self._create_status_frame(self.main_frame)
 
-        # Control buttons frame
-        self._create_control_buttons(self.main_frame)
+        # Language buttons frame (only language buttons, no STOP/Settings)
+        self._create_language_buttons(self.main_frame)
 
         # Download progress frame (hidden by default)
         self._create_progress_frame(self.main_frame)
@@ -844,44 +858,64 @@ class MainWindow:
         save_btn.grid(row=0, column=1, padx=5)
 
     def _create_status_frame(self, parent):
-        """Create status display frame"""
+        """Create status display frame with STOP button on the right"""
         status_frame = ttk.LabelFrame(parent, text="Status", padding="15")
         status_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 15))
         status_frame.columnconfigure(1, weight=1)
 
+        # Left side: Status info
+        info_frame = ttk.Frame(status_frame)
+        info_frame.grid(row=0, column=0, sticky=(tk.W, tk.N))
+
         # Status indicator
-        ttk.Label(status_frame, text="Estado:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
-        self.status_label = ttk.Label(status_frame, text="Detenido", font=("Arial", 10, "bold"))
+        ttk.Label(info_frame, text="Estado:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        self.status_label = ttk.Label(info_frame, text="Detenido", font=("Arial", 10, "bold"))
         self.status_label.grid(row=0, column=1, sticky=tk.W)
 
         # Current model
-        ttk.Label(status_frame, text="Modelo:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
-        self.model_label = ttk.Label(status_frame, text="Ninguno")
+        ttk.Label(info_frame, text="Modelo:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.model_label = ttk.Label(info_frame, text="Ninguno")
         self.model_label.grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
 
         # Language
-        ttk.Label(status_frame, text="Idioma:").grid(row=2, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
-        self.language_label = ttk.Label(status_frame, text="Ninguno")
+        ttk.Label(info_frame, text="Idioma:").grid(row=2, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.language_label = ttk.Label(info_frame, text="Ninguno")
         self.language_label.grid(row=2, column=1, sticky=tk.W, pady=(5, 0))
 
         # Voice Commands status
-        ttk.Label(status_frame, text="Comandos Voz:").grid(row=3, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
-        self.voice_commands_label = ttk.Label(status_frame, text="Deshabilitado", foreground="gray")
+        ttk.Label(info_frame, text="Comandos Voz:").grid(row=3, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.voice_commands_label = ttk.Label(info_frame, text="Deshabilitado", foreground="gray")
         self.voice_commands_label.grid(row=3, column=1, sticky=tk.W, pady=(5, 0))
 
-    def _create_control_buttons(self, parent):
-        """Create control buttons"""
-        button_frame = ttk.Frame(parent)
-        button_frame.grid(row=2, column=0, pady=(0, 20))
+        # Right side: STOP button (initially hidden)
+        # Create a frame for the STOP button to control its size better
+        stop_frame = ttk.Frame(status_frame)
+        stop_frame.grid(row=0, column=1, sticky=tk.E, padx=(20, 0))
 
-        # Stop button
-        self.stop_btn = ttk.Button(
-            button_frame,
+        self.stop_btn = tk.Button(
+            stop_frame,
             text="⏹ STOP",
             command=self._on_stop_clicked,
-            width=15
+            font=("Arial", 14, "bold"),
+            bg="#ff4444",
+            fg="white",
+            activebackground="#cc0000",
+            activeforeground="white",
+            relief=tk.RAISED,
+            bd=3,
+            padx=20,
+            pady=15,
+            cursor="hand2"
         )
-        self.stop_btn.grid(row=0, column=0, padx=5)
+        self.stop_btn.pack()
+        stop_frame.grid_remove()  # Hide initially
+        self.stop_frame = stop_frame  # Store reference to frame
+
+    def _create_language_buttons(self, parent):
+        """Create language selection buttons (only language buttons, no STOP/Settings)"""
+        # Store button frame reference for later recreation
+        self.button_frame = ttk.Frame(parent)
+        self.button_frame.grid(row=2, column=0, pady=(0, 20))
 
         # Dynamic language buttons based on current backend
         # Get supported languages for the current backend
@@ -891,7 +925,7 @@ class MainWindow:
         self.language_buttons = {}
 
         # Create a button for each supported language
-        column_index = 1  # Start after STOP button (column 0)
+        column_index = 0  # Start from column 0 (no STOP button here anymore)
         for lang_key, lang_info in supported_languages.items():
             # Get display info from language config
             flag = lang_info.get('flag', '')
@@ -901,7 +935,7 @@ class MainWindow:
             button_text = f"{flag} {name}" if flag else name
 
             lang_btn = ttk.Button(
-                button_frame,
+                self.button_frame,
                 text=button_text,
                 command=lambda key=lang_key: self._on_language_clicked(key),
                 width=15
@@ -912,15 +946,6 @@ class MainWindow:
             self.language_buttons[lang_key] = lang_btn
 
             column_index += 1
-
-        # Settings button
-        self.settings_btn = ttk.Button(
-            button_frame,
-            text="⚙ Settings",
-            command=self._on_settings_clicked,
-            width=15
-        )
-        self.settings_btn.grid(row=0, column=3, padx=5)
 
     def _create_progress_frame(self, parent):
         """Create download progress frame (hidden by default)"""
@@ -1536,12 +1561,56 @@ class MainWindow:
         # Set geometry with position
         self.root.geometry(f"{width}x{height}+{x}+{y}")
 
+    def _recreate_language_buttons(self):
+        """Recreate language buttons based on current backend"""
+        from src.core.logging_controller import info, debug
+
+        # Destroy existing language buttons
+        for lang_btn in self.language_buttons.values():
+            lang_btn.destroy()
+
+        # Clear dictionary
+        self.language_buttons.clear()
+
+        # Get supported languages for current backend
+        supported_languages = self.config.get_supported_languages(self.config.backend)
+
+        debug(f"Recreating language buttons for backend '{self.config.backend}': {list(supported_languages.keys())}")
+
+        # Create a button for each supported language
+        column_index = 0  # Start from column 0 (no STOP button here anymore)
+        for lang_key, lang_info in supported_languages.items():
+            # Get display info from language config
+            flag = lang_info.get('flag', '')
+            name = lang_info.get('name', lang_key.capitalize())
+
+            # Create button with flag emoji and language name
+            button_text = f"{flag} {name}" if flag else name
+
+            lang_btn = ttk.Button(
+                self.button_frame,
+                text=button_text,
+                command=lambda key=lang_key: self._on_language_clicked(key),
+                width=15
+            )
+            lang_btn.grid(row=0, column=column_index, padx=5)
+
+            # Store reference to button
+            self.language_buttons[lang_key] = lang_btn
+
+            column_index += 1
+
+        info(f"Recreated {len(self.language_buttons)} language buttons for backend: {self.config.backend}")
+
     def _update_ui_from_config(self):
         """Update UI elements based on current config values"""
         from src.core.logging_controller import info, debug, warning, error, critical
 
         # Log current backend
         info(f"Updating UI with backend: {self.config.backend}")
+
+        # Recreate language buttons for current backend
+        self._recreate_language_buttons()
 
         # Update window title
         backend_text = f" [{self.config.backend.upper()}]"
@@ -1568,6 +1637,9 @@ class MainWindow:
             lang_code = status["language"]
             lang_name = self.config.get_language_name(lang_code)
             self.language_label.config(text=lang_name)
+
+            # Show STOP button when running
+            self.stop_frame.grid()
         else:
             self.status_label.config(text="🔴 Detenido", foreground="red")
             # Show backend info when not running
@@ -1577,6 +1649,9 @@ class MainWindow:
             else:
                 self.model_label.config(text=f"{self.config.backend.upper()}")
             self.language_label.config(text="Ninguno")
+
+            # Hide STOP button when not running
+            self.stop_frame.grid_remove()
 
         # Update voice commands status
         try:
