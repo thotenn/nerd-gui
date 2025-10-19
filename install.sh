@@ -193,59 +193,8 @@ install_vosk_backend() {
     print_success "nerd-dictation configured"
 }
 
-download_vosk_models() {
-    print_status "Downloading Vosk models..."
-
-    mkdir -p "$MODELS_DIR"
-    cd "$MODELS_DIR"
-
-    # Spanish model (small - ~40MB)
-    if [ ! -d "vosk-model-small-es-0.42" ]; then
-        print_status "Downloading Spanish model (small - ~40MB)..."
-        wget -q --show-progress https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip
-        unzip -q vosk-model-small-es-0.42.zip
-        rm vosk-model-small-es-0.42.zip
-        print_success "Spanish model downloaded"
-    else
-        print_success "Spanish model already exists"
-    fi
-
-    # English model (small - ~40MB)
-    if [ ! -d "vosk-model-small-en-us-0.15" ]; then
-        print_status "Downloading English model (small - ~40MB)..."
-        wget -q --show-progress https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
-        unzip -q vosk-model-small-en-us-0.15.zip
-        rm vosk-model-small-en-us-0.15.zip
-        print_success "English model downloaded"
-    else
-        print_success "English model already exists"
-    fi
-
-    # Optional: Large models
-    echo ""
-    print_status "Download large models for better accuracy? (~1.5GB each) (y/N)"
-    read -r response
-
-    if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
-        cd "$MODELS_DIR"
-
-        if [ ! -d "vosk-model-es-0.42" ]; then
-            print_status "Downloading Spanish large model (1.5GB)..."
-            wget -q --show-progress https://alphacephei.com/vosk/models/vosk-model-es-0.42.zip
-            unzip -q vosk-model-es-0.42.zip
-            rm vosk-model-es-0.42.zip
-            print_success "Spanish large model downloaded"
-        fi
-
-        if [ ! -d "vosk-model-en-us-0.22" ]; then
-            print_status "Downloading English large model (1.8GB)..."
-            wget -q --show-progress https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip
-            unzip -q vosk-model-en-us-0.22.zip
-            rm vosk-model-en-us-0.22.zip
-            print_success "English large model downloaded"
-        fi
-    fi
-}
+# Vosk models are now downloaded automatically on first use
+# No need to download during installation
 
 # ============================================================================
 # WHISPER BACKEND INSTALLATION
@@ -629,7 +578,7 @@ main() {
 
     if [ "$INSTALL_VOSK" = true ]; then
         install_vosk_backend
-        download_vosk_models
+        print_status "Vosk models will download automatically when you first use each language"
     fi
 
     if [ "$INSTALL_WHISPER" = true ]; then

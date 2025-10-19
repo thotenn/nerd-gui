@@ -177,13 +177,15 @@ class DictationController:
         session = self.database.get_current_session()
         return session is not None
 
-    def start(self, language: str, model_path: Optional[str] = None) -> Tuple[bool, str]:
+    def start(self, language: str, model_size: str = "small") -> Tuple[bool, str]:
         """
         Start dictation with specified language and model.
 
         Args:
             language: Language code (e.g., 'en', 'es')
-            model_path: Optional path to specific model
+            model_size: Model size ('small', 'medium', 'large', etc.)
+                       For Vosk: downloads automatically if needed
+                       For Whisper: uses specified size
 
         Returns:
             Tuple of (success, message)
@@ -191,7 +193,7 @@ class DictationController:
         if not self.current_backend:
             return False, "No backend available"
 
-        info(f"Starting dictation with backend_type: {self.backend_type}, current_backend: {self.current_backend.name}")
+        info(f"Starting dictation with backend_type: {self.backend_type}, current_backend: {self.current_backend.name}, model_size: {model_size}")
 
         # Check if backend is in ERROR state and try to reset it
         if hasattr(self.current_backend, 'status'):
@@ -210,30 +212,37 @@ class DictationController:
 
         try:
             # Start dictation with current backend
-            success = self.current_backend.start(language, model_path)
+            # Both Vosk and Whisper now use model_size parameter
+            success = self.current_backend.start(language, model_size)
 
             if success:
                 # Record in database
                 backend_name = self.current_backend.name.lower()
 
-                # Get proper model name
-                if model_path:
-                    # Vosk: use the model directory name
-                    model_name = Path(model_path).name
+                # Get proper model name and path
+                if backend_name == "vosk":
+                    # Vosk: get actual model path from backend
+                    if hasattr(self.current_backend, 'current_model_path'):
+                        model_path_str = self.current_backend.current_model_path or ""
+                        model_name = Path(model_path_str).name if model_path_str else f"vosk-{language}-{model_size}"
+                    else:
+                        model_path_str = ""
+                        model_name = f"vosk-{language}-{model_size}"
                 elif backend_name == "whisper":
                     # Whisper: use the specific model size
+                    model_path_str = ""
                     if hasattr(self.current_backend, 'model_size'):
                         model_name = f"whisper-{self.current_backend.model_size}"
                     else:
-                        # Fallback: extract from config
-                        model_name = self.config.whisper_model.split('/')[-1]
+                        model_name = f"whisper-{model_size}"
                 else:
                     # Fallback
+                    model_path_str = ""
                     model_name = self.backend_type
 
                 self.database.start_session(
                     language=language,
-                    model_path=model_path or "",
+                    model_path=model_path_str,
                     model_name=model_name,
                     backend=backend_name
                 )

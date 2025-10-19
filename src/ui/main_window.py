@@ -240,10 +240,33 @@ class MainWindow:
         self.vosk_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(15, 0))
         self.vosk_frame.columnconfigure(1, weight=1)
 
-        # Get available Vosk models
-        all_models = self.config.get_available_models()
-        spanish_models = [m["name"] for m in all_models if m["language"] == "spanish"]
-        english_models = [m["name"] for m in all_models if m["language"] == "english"]
+        # Get available Vosk models from VoskModelManager (all available for download)
+        from src.backends.vosk_model_manager import VoskModelManager
+        manager = VoskModelManager(self.config.models_dir)
+
+        # Get model sizes for each language (not file names, but sizes)
+        spanish_models_dict = manager.list_available_models('es').get('es', {})
+        english_models_dict = manager.list_available_models('en').get('en', {})
+
+        # Create display-friendly options with size and description
+        spanish_options = [
+            f"{size} - {info['description']}"
+            for size, info in spanish_models_dict.items()
+        ]
+        english_options = [
+            f"{size} - {info['description']}"
+            for size, info in english_models_dict.items()
+        ]
+
+        # Store mapping from display name to size
+        self.vosk_spanish_size_map = {
+            f"{size} - {info['description']}": size
+            for size, info in spanish_models_dict.items()
+        }
+        self.vosk_english_size_map = {
+            f"{size} - {info['description']}": size
+            for size, info in english_models_dict.items()
+        }
 
         # Spanish model selection
         ttk.Label(
@@ -256,22 +279,24 @@ class MainWindow:
         self.vosk_spanish_combo = ttk.Combobox(
             self.vosk_frame,
             textvariable=self.vosk_spanish_var,
-            values=spanish_models,
+            values=spanish_options,
             state="readonly",
             width=50
         )
         self.vosk_spanish_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=(0, 5))
 
-        if spanish_models:
-            self.vosk_spanish_combo.set(spanish_models[0])
+        # Set default to 'small'
+        if spanish_options:
+            default = [opt for opt in spanish_options if opt.startswith('small')]
+            self.vosk_spanish_combo.set(default[0] if default else spanish_options[0])
 
-        # Warning for Spanish if no models
-        if not spanish_models:
-            ttk.Label(
-                self.vosk_frame,
-                text="⚠ No Spanish models found in models directory",
-                foreground="orange"
-            ).grid(row=1, column=1, sticky=tk.W, pady=(0, 10))
+        # Help text for Spanish
+        ttk.Label(
+            self.vosk_frame,
+            text="💡 Models download automatically on first use",
+            font=("Arial", 8),
+            foreground="gray"
+        ).grid(row=1, column=1, sticky=tk.W, pady=(0, 10))
 
         # English model selection
         ttk.Label(
@@ -284,22 +309,24 @@ class MainWindow:
         self.vosk_english_combo = ttk.Combobox(
             self.vosk_frame,
             textvariable=self.vosk_english_var,
-            values=english_models,
+            values=english_options,
             state="readonly",
             width=50
         )
         self.vosk_english_combo.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=(10, 5))
 
-        if english_models:
-            self.vosk_english_combo.set(english_models[0])
+        # Set default to 'small'
+        if english_options:
+            default = [opt for opt in english_options if opt.startswith('small')]
+            self.vosk_english_combo.set(default[0] if default else english_options[0])
 
-        # Warning for English if no models
-        if not english_models:
-            ttk.Label(
-                self.vosk_frame,
-                text="⚠ No English models found in models directory",
-                foreground="orange"
-            ).grid(row=3, column=1, sticky=tk.W)
+        # Help text for English
+        ttk.Label(
+            self.vosk_frame,
+            text="💡 Models download automatically on first use",
+            font=("Arial", 8),
+            foreground="gray"
+        ).grid(row=3, column=1, sticky=tk.W, pady=(0, 10))
 
         # Info about models location
         models_path = str(self.config.models_dir)
@@ -951,13 +978,39 @@ class MainWindow:
         self.backend_var.set(backend)
 
         # Load Vosk settings
+        # Saved values could be sizes ("small"), model names ("vosk-model-es-0.42"), or paths
+        # Need to convert to display format ("small - Small Spanish model...")
         vosk_es = self.database.get_setting('vosk_model_es', '')
-        if vosk_es and vosk_es in self.vosk_spanish_combo['values']:
-            self.vosk_spanish_var.set(vosk_es)
+        if vosk_es:
+            # Normalize to size using backend logic
+            from src.backends.vosk_backend import VoskBackend
+            backend = VoskBackend(
+                nerd_dictation_dir=str(self.config.nerd_dictation_dir),
+                venv_python=str(self.config.nerd_dictation_dir / "venv" / "bin" / "python"),
+                models_dir=str(self.config.models_dir)
+            )
+            size = backend._normalize_model_size('es', vosk_es)
+            # Find matching display option
+            for display_name, mapped_size in self.vosk_spanish_size_map.items():
+                if mapped_size == size:
+                    self.vosk_spanish_var.set(display_name)
+                    break
 
         vosk_en = self.database.get_setting('vosk_model_en', '')
-        if vosk_en and vosk_en in self.vosk_english_combo['values']:
-            self.vosk_english_var.set(vosk_en)
+        if vosk_en:
+            # Normalize to size
+            from src.backends.vosk_backend import VoskBackend
+            backend = VoskBackend(
+                nerd_dictation_dir=str(self.config.nerd_dictation_dir),
+                venv_python=str(self.config.nerd_dictation_dir / "venv" / "bin" / "python"),
+                models_dir=str(self.config.models_dir)
+            )
+            size = backend._normalize_model_size('en', vosk_en)
+            # Find matching display option
+            for display_name, mapped_size in self.vosk_english_size_map.items():
+                if mapped_size == size:
+                    self.vosk_english_var.set(display_name)
+                    break
 
         # Load Whisper settings
         model_id = self.database.get_setting('whisper_model', self.config.whisper_model)
@@ -1154,10 +1207,15 @@ class MainWindow:
             self.database.save_setting('backend', self.backend_var.get())
 
             # Save Vosk settings
+            # Convert from display format back to size for storage
             if self.vosk_spanish_var.get():
-                self.database.save_setting('vosk_model_es', self.vosk_spanish_var.get())
+                display_value = self.vosk_spanish_var.get()
+                size = self.vosk_spanish_size_map.get(display_value, 'small')
+                self.database.save_setting('vosk_model_es', size)
             if self.vosk_english_var.get():
-                self.database.save_setting('vosk_model_en', self.vosk_english_var.get())
+                display_value = self.vosk_english_var.get()
+                size = self.vosk_english_size_map.get(display_value, 'small')
+                self.database.save_setting('vosk_model_en', size)
 
             # Save Whisper settings
             display_name = self.whisper_model_var.get()
@@ -1341,29 +1399,47 @@ class MainWindow:
             thread = threading.Thread(target=start_whisper, daemon=True)
             thread.start()
         else:
-            # Vosk backend - needs model path
-            last_model = self.database.get_last_used_model(language)
+            # Vosk backend - automatic model download
+            # Determine model size from database settings or use default
+            model_size_key = f"vosk_model_{lang_code}"
+            saved_model = self.database.get_setting(model_size_key)
 
-            if last_model:
-                info(f"Starting with last used model: {last_model['path']}")
-                success, message = self.controller.restart(lang_code, last_model["path"])
-                if not success:
-                    messagebox.showerror("Error", f"Failed to start Vosk:\n{message}")
+            # Default model sizes per language
+            default_sizes = {
+                'es': 'small',  # Spanish: start with small (40MB)
+                'en': 'small'   # English: start with small (40MB)
+            }
+
+            # Use saved model, fallback to default
+            if saved_model:
+                # Saved model could be a path, name, or size - backend will normalize it
+                model_size = saved_model
+                info(f"Using saved model setting: {model_size}")
             else:
-                # Find first available model for this language
-                models = self.config.get_available_models()
-                matching_models = [m for m in models if m["language"] == language]
+                model_size = default_sizes.get(lang_code, 'small')
+                info(f"No saved model, using default size: {model_size}")
 
-                if matching_models:
-                    info(f"Starting with first matching model: {matching_models[0]['path']}")
-                    success, message = self.controller.restart(lang_code, matching_models[0]["path"])
-                    if not success:
-                        messagebox.showerror("Error", f"Failed to start Vosk:\n{message}")
+            # Show progress bar for Vosk (in case model needs to download)
+            self.show_download_progress(f"vosk-{lang_code}-{model_size}")
+
+            # Disable language buttons during loading
+            self.spanish_btn.config(state='disabled')
+            self.english_btn.config(state='disabled')
+
+            # Start Vosk in background thread (like Whisper)
+            def start_vosk():
+                info(f"Starting Vosk backend with language '{lang_code}', model size '{model_size}'")
+                success, message = self.controller.start(lang_code, model_size)
+                info(f"Start result: success={success}, message={message}")
+
+                # Schedule UI update in main thread
+                if not success:
+                    self.root.after(0, lambda: self._on_vosk_error(message))
                 else:
-                    warning(f"No models found for language: {language}")
-                    messagebox.showwarning("No Models", f"No Vosk models found for {language}")
+                    self.root.after(0, self._on_vosk_started)
 
-            self._update_status()
+            thread = threading.Thread(target=start_vosk, daemon=True)
+            thread.start()
 
     def _on_whisper_started(self):
         """Called after Whisper backend starts (in main thread)"""
@@ -1385,6 +1461,34 @@ class MainWindow:
         # Re-enable language buttons
         self.spanish_btn.config(state='normal')
         self.english_btn.config(state='normal')
+
+    def _on_vosk_started(self):
+        """Called after Vosk backend starts (in main thread)"""
+        # Hide progress bar
+        self.hide_download_progress()
+
+        # Re-enable language buttons
+        self.spanish_btn.config(state='normal')
+        self.english_btn.config(state='normal')
+
+        # Update status
+        self._update_status()
+
+    def _on_vosk_error(self, error_message):
+        """Called when Vosk backend fails to start (in main thread)"""
+        # Hide progress bar
+        self.hide_download_progress()
+
+        # Re-enable language buttons
+        self.spanish_btn.config(state='normal')
+        self.english_btn.config(state='normal')
+
+        # Show error message
+        from tkinter import messagebox
+        messagebox.showerror("Error", f"Failed to start Vosk:\n{error_message}")
+
+        # Update status
+        self._update_status()
 
         # Show error dialog
         messagebox.showerror(
