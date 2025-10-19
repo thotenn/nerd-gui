@@ -3,6 +3,8 @@ Vosk Model Manager - Automatic model download and management.
 
 Similar to Whisper's automatic model downloading, this manager
 handles Vosk model downloads, caching, and verification.
+
+Models are loaded dynamically from models.json with fallback to hardcoded values.
 """
 
 import os
@@ -12,46 +14,23 @@ import zipfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from src.core.logging_controller import info, debug, warning, error
+from src.core.model_config_loader import get_model_config_loader
 
-# Available Vosk models with download URLs
-VOSK_MODELS = {
-    # English models
-    "en": {
-        "small": {
-            "name": "vosk-model-small-en-us-0.15",
-            "url": "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip",
-            "size": "40MB",
-            "description": "Small English model (~90% accuracy, fast)"
-        },
-        "medium": {
-            "name": "vosk-model-en-us-0.22-lgraph",
-            "url": "https://alphacephei.com/vosk/models/vosk-model-en-us-0.22-lgraph.zip",
-            "size": "128MB",
-            "description": "Medium English model with language model graph"
-        },
-        "gigaspeech": {
-            "name": "vosk-model-en-us-0.42-gigaspeech",
-            "url": "https://alphacephei.com/vosk/models/vosk-model-en-us-0.42-gigaspeech.zip",
-            "size": "2.3GB",
-            "description": "GigaSpeech English model (high accuracy)"
-        }
-    },
-    # Spanish models
-    "es": {
-        "small": {
-            "name": "vosk-model-small-es-0.42",
-            "url": "https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip",
-            "size": "40MB",
-            "description": "Small Spanish model (~90% accuracy, fast)"
-        },
-        "large": {
-            "name": "vosk-model-es-0.42",
-            "url": "https://alphacephei.com/vosk/models/vosk-model-es-0.42.zip",
-            "size": "1.5GB",
-            "description": "Large Spanish model (~95% accuracy, slower)"
-        }
-    }
-}
+# Load models dynamically from JSON
+def _get_vosk_models() -> Dict:
+    """Get Vosk models from configuration loader."""
+    loader = get_model_config_loader()
+    return loader.get_vosk_models()
+
+# Lazy-loaded VOSK_MODELS (for backward compatibility)
+VOSK_MODELS = None
+
+def get_vosk_models_dict() -> Dict:
+    """Get VOSK_MODELS dictionary, loading if needed."""
+    global VOSK_MODELS
+    if VOSK_MODELS is None:
+        VOSK_MODELS = _get_vosk_models()
+    return VOSK_MODELS
 
 
 class VoskModelManager:
@@ -89,9 +68,10 @@ class VoskModelManager:
         Returns:
             Dictionary of available models
         """
+        models = get_vosk_models_dict()
         if language:
-            return {language: VOSK_MODELS.get(language, {})}
-        return VOSK_MODELS
+            return {language: models.get(language, {})}
+        return models
 
     def list_downloaded_models(self) -> List[str]:
         """
@@ -148,7 +128,8 @@ class VoskModelManager:
             Path to model directory, or None if download failed
         """
         # Get model info
-        lang_models = VOSK_MODELS.get(language)
+        models = get_vosk_models_dict()
+        lang_models = models.get(language)
         if not lang_models:
             error(f"Unsupported language: {language}")
             return None
@@ -189,7 +170,8 @@ class VoskModelManager:
             True if download and extraction successful
         """
         # Get model info
-        lang_models = VOSK_MODELS.get(language)
+        models = get_vosk_models_dict()
+        lang_models = models.get(language)
         if not lang_models:
             error(f"Unsupported language: {language}")
             return False
@@ -297,7 +279,8 @@ class VoskModelManager:
         Returns:
             Model information dictionary or None
         """
-        lang_models = VOSK_MODELS.get(language)
+        models = get_vosk_models_dict()
+        lang_models = models.get(language)
         if not lang_models:
             return None
 

@@ -52,17 +52,8 @@ class Config:
         # Debug flag (will be loaded from database)
         self.debug_enabled = False
 
-        # Language configurations
-        self.languages = {
-            "spanish": {
-                "name": "Español",
-                "code": "es"
-            },
-            "english": {
-                "name": "English",
-                "code": "en"
-            }
-        }
+        # Language configurations - loaded dynamically from models.json
+        self._load_languages_from_config()
 
         # Ensure directories exist
         self._create_directories()
@@ -70,6 +61,53 @@ class Config:
         # Load settings from database if available
         if self.database:
             self.reload_from_db()
+
+    def _load_languages_from_config(self):
+        """Load language configurations from models.json via ModelConfigLoader."""
+        from src.core.model_config_loader import get_model_config_loader
+
+        loader = get_model_config_loader()
+        json_languages = loader.get_languages()
+
+        # Convert from JSON format to internal format
+        # JSON: {"en": {"name": "English", "code": "en", "flag": "🇺🇸", ...}}
+        # Internal: {"english": {"name": "English", "code": "en"}}
+
+        self.languages = {}
+        for code, info in json_languages.items():
+            # Create key from language name (lowercase)
+            key = info.get("name", code).lower()
+
+            self.languages[key] = {
+                "name": info.get("name", code),
+                "code": info.get("code", code),
+                "flag": info.get("flag", ""),
+                "vosk_supported": info.get("vosk_supported", False),
+                "whisper_supported": info.get("whisper_supported", False)
+            }
+
+    def get_supported_languages(self, backend: str = None):
+        """
+        Get languages supported by a specific backend.
+
+        Args:
+            backend: 'vosk' or 'whisper'. If None, returns all languages.
+
+        Returns:
+            Dictionary of supported languages
+        """
+        if backend == "vosk":
+            return {
+                key: info for key, info in self.languages.items()
+                if info.get("vosk_supported", False)
+            }
+        elif backend == "whisper":
+            return {
+                key: info for key, info in self.languages.items()
+                if info.get("whisper_supported", False)
+            }
+
+        return self.languages
 
     def _load_env(self):
         """Load environment variables from .env file"""

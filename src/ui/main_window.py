@@ -883,23 +883,35 @@ class MainWindow:
         )
         self.stop_btn.grid(row=0, column=0, padx=5)
 
-        # Spanish button
-        self.spanish_btn = ttk.Button(
-            button_frame,
-            text="🇪🇸 Español",
-            command=lambda: self._on_language_clicked("spanish"),
-            width=15
-        )
-        self.spanish_btn.grid(row=0, column=1, padx=5)
+        # Dynamic language buttons based on current backend
+        # Get supported languages for the current backend
+        supported_languages = self.config.get_supported_languages(self.config.backend)
 
-        # English button
-        self.english_btn = ttk.Button(
-            button_frame,
-            text="🇬🇧 English",
-            command=lambda: self._on_language_clicked("english"),
-            width=15
-        )
-        self.english_btn.grid(row=0, column=2, padx=5)
+        # Store language buttons in a dictionary for easy access
+        self.language_buttons = {}
+
+        # Create a button for each supported language
+        column_index = 1  # Start after STOP button (column 0)
+        for lang_key, lang_info in supported_languages.items():
+            # Get display info from language config
+            flag = lang_info.get('flag', '')
+            name = lang_info.get('name', lang_key.capitalize())
+
+            # Create button with flag emoji and language name
+            button_text = f"{flag} {name}" if flag else name
+
+            lang_btn = ttk.Button(
+                button_frame,
+                text=button_text,
+                command=lambda key=lang_key: self._on_language_clicked(key),
+                width=15
+            )
+            lang_btn.grid(row=0, column=column_index, padx=5)
+
+            # Store reference to button
+            self.language_buttons[lang_key] = lang_btn
+
+            column_index += 1
 
         # Settings button
         self.settings_btn = ttk.Button(
@@ -1381,8 +1393,8 @@ class MainWindow:
             self.show_download_progress(model_name)
 
             # Disable language buttons during loading
-            self.spanish_btn.config(state='disabled')
-            self.english_btn.config(state='disabled')
+            for lang_btn in self.language_buttons.values():
+                lang_btn.config(state='disabled')
 
             # Start Whisper in background thread
             def start_whisper():
@@ -1423,8 +1435,8 @@ class MainWindow:
             self.show_download_progress(f"vosk-{lang_code}-{model_size}")
 
             # Disable language buttons during loading
-            self.spanish_btn.config(state='disabled')
-            self.english_btn.config(state='disabled')
+            for lang_btn in self.language_buttons.values():
+                lang_btn.config(state='disabled')
 
             # Start Vosk in background thread (like Whisper)
             def start_vosk():
@@ -1447,8 +1459,8 @@ class MainWindow:
         self.hide_download_progress()
 
         # Re-enable language buttons
-        self.spanish_btn.config(state='normal')
-        self.english_btn.config(state='normal')
+        for lang_btn in self.language_buttons.values():
+            lang_btn.config(state='normal')
 
         # Update status
         self._update_status()
@@ -1459,8 +1471,8 @@ class MainWindow:
         self.hide_download_progress()
 
         # Re-enable language buttons
-        self.spanish_btn.config(state='normal')
-        self.english_btn.config(state='normal')
+        for lang_btn in self.language_buttons.values():
+            lang_btn.config(state='normal')
 
     def _on_vosk_started(self):
         """Called after Vosk backend starts (in main thread)"""
@@ -1468,8 +1480,8 @@ class MainWindow:
         self.hide_download_progress()
 
         # Re-enable language buttons
-        self.spanish_btn.config(state='normal')
-        self.english_btn.config(state='normal')
+        for lang_btn in self.language_buttons.values():
+            lang_btn.config(state='normal')
 
         # Update status
         self._update_status()
@@ -1480,8 +1492,8 @@ class MainWindow:
         self.hide_download_progress()
 
         # Re-enable language buttons
-        self.spanish_btn.config(state='normal')
-        self.english_btn.config(state='normal')
+        for lang_btn in self.language_buttons.values():
+            lang_btn.config(state='normal')
 
         # Show error message
         from tkinter import messagebox
