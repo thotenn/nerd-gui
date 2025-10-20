@@ -6,6 +6,10 @@
 # WHISPER BACKEND DEPENDENCIES (GPU-accelerated)
 # ============================================================
 
+# PyTorch (required by faster-whisper)
+torch>=2.0.0
+torchaudio>=2.0.0
+
 # Core Whisper transcription
 faster-whisper>=0.10.0
 
