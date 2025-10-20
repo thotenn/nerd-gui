@@ -21,6 +21,17 @@ MODELS_DIR="$HOME/.config/nerd-dictation"
 # Installation flags
 INSTALL_VOSK=false
 INSTALL_WHISPER=false
+ALLOW_ROOT=false
+
+# Parse command line arguments
+for arg in "$@"; do
+    case $arg in
+        --allow-root)
+            ALLOW_ROOT=true
+            shift
+            ;;
+    esac
+done
 
 # Functions
 print_status() {
@@ -66,9 +77,15 @@ check_ubuntu() {
 # Check if running as root
 check_not_root() {
     if [[ $EUID -eq 0 ]]; then
-        print_error "This script should not be run as root for security reasons."
-        print_error "Please run as a regular user with sudo privileges."
-        exit 1
+        if [ "$ALLOW_ROOT" = true ]; then
+            print_warning "Running as root (--allow-root flag detected)"
+            print_warning "This is not recommended outside of containers/testing environments"
+        else
+            print_error "This script should not be run as root for security reasons."
+            print_error "Please run as a regular user with sudo privileges."
+            print_error "For containers/testing, use: ./install.sh --allow-root"
+            exit 1
+        fi
     fi
 }
 
@@ -119,10 +136,16 @@ choose_backends() {
 install_common_dependencies() {
     print_status "Installing common system dependencies..."
 
-    sudo apt update
+    # Use sudo only if not running as root
+    SUDO_CMD=""
+    if [[ $EUID -ne 0 ]]; then
+        SUDO_CMD="sudo"
+    fi
+
+    $SUDO_CMD apt update
 
     # Common packages
-    sudo apt install -y \
+    $SUDO_CMD apt install -y \
         python3-pip \
         python3-venv \
         python3-tk \
@@ -151,19 +174,33 @@ install_common_dependencies() {
 install_vosk_backend() {
     print_header "Installing Vosk Backend (nerd-dictation)"
 
-    # Check if integrated nerd-dictation exists
+    # Check if integrated nerd-dictation exists, clone if not
     if [ ! -d "$NERD_DICTATION_DIR" ]; then
-        print_error "Integrated nerd-dictation not found at $NERD_DICTATION_DIR"
-        print_error "Please ensure you cloned the repository correctly"
-        exit 1
+        print_warning "Integrated nerd-dictation not found at $NERD_DICTATION_DIR"
+        print_status "Cloning nerd-dictation from GitHub..."
+
+        # Create apps directory if it doesn't exist
+        mkdir -p "$PROJECT_DIR/apps"
+
+        # Clone nerd-dictation
+        cd "$PROJECT_DIR/apps"
+        git clone https://github.com/ideasman42/nerd-dictation.git
+
+        if [ ! -d "$NERD_DICTATION_DIR" ]; then
+            print_error "Failed to clone nerd-dictation"
+            exit 1
+        fi
+
+        print_success "nerd-dictation cloned successfully"
+    else
+        print_status "Using integrated nerd-dictation at: $NERD_DICTATION_DIR"
     fi
 
-    print_status "Using integrated nerd-dictation at: $NERD_DICTATION_DIR"
     cd "$NERD_DICTATION_DIR"
 
     # Note: nerd-dictation is now integrated into this repository
     # Updates will come through the main repository, not as a separate git submodule
-    print_success "Using integrated nerd-dictation (version controlled with main repo)"
+    print_success "nerd-dictation ready for installation"
 
     # Create virtual environment for nerd-dictation
     if [ -d "venv" ]; then
