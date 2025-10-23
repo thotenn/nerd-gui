@@ -175,6 +175,8 @@ class MicrophoneStream:
                 x_old = np.linspace(0, 1, len(audio_array))
                 x_new = np.linspace(0, 1, new_length)
                 audio_array = np.interp(x_new, x_old, audio_array)
+                # np.interp returns float64, convert back to float32 for Whisper
+                audio_array = audio_array.astype(np.float32)
 
             return audio_array
         except queue.Empty:
