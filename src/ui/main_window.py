@@ -415,6 +415,78 @@ class MainWindow:
         # Advanced settings
         self._create_whisper_advanced_settings()
 
+    def _get_audio_input_devices(self):
+        """Get list of available audio input devices"""
+        try:
+            import pyaudio
+            p = pyaudio.PyAudio()
+
+            devices = ["Default"]  # First option is always default
+
+            for i in range(p.get_device_count()):
+                try:
+                    info = p.get_device_info_by_index(i)
+                    # Only include devices with input channels
+                    if info['maxInputChannels'] > 0:
+                        # Format: "index: Device Name"
+                        device_name = info['name']
+                        devices.append(f"{i}: {device_name}")
+                except Exception:
+                    continue  # Skip problematic devices
+
+            p.terminate()
+            return devices
+
+        except Exception as e:
+            from src.core.logging_controller import warning
+            warning(f"Could not enumerate audio devices: {e}")
+            return ["Default"]  # Fallback to just default
+
+    def _device_display_to_index(self, display_value):
+        """Convert display format to device index
+
+        Args:
+            display_value: Either "Default" or "5: Device Name"
+
+        Returns:
+            Empty string for "Default", or the index as string (e.g., "5")
+        """
+        if display_value == "Default" or not display_value:
+            return ""
+
+        # Extract index from "5: Device Name" format
+        try:
+            index = display_value.split(":")[0].strip()
+            return index
+        except Exception:
+            return ""
+
+    def _device_index_to_display(self, index_value):
+        """Convert device index to display format
+
+        Args:
+            index_value: Empty string or index number (e.g., "5" or 5)
+
+        Returns:
+            Display format: "Default" or "5: Device Name" (if device exists)
+        """
+        if not index_value or index_value == "":
+            return "Default"
+
+        # Get current available devices
+        devices = self._get_audio_input_devices()
+
+        # Try to find matching device
+        index_str = str(index_value)
+        for device in devices:
+            if device.startswith(f"{index_str}:"):
+                return device
+
+        # If device not found, return Default
+        from src.core.logging_controller import warning
+        warning(f"Audio device index {index_value} not found, using Default")
+        return "Default"
+
     def _create_whisper_advanced_settings(self):
         """Create Whisper advanced parameters section"""
         # Advanced settings header with Reset button
@@ -460,14 +532,35 @@ class MainWindow:
         )
         compute_combo.grid(row=7, column=1, sticky=tk.W, pady=5)
 
-        # Device Index
-        ttk.Label(self.whisper_frame, text="Device Index:", font=("Arial", 9)).grid(row=8, column=0, sticky=tk.W, pady=5)
-        self.whisper_device_index_var = tk.StringVar(value="")
-        device_index_entry = ttk.Entry(self.whisper_frame, textvariable=self.whisper_device_index_var, width=18)
-        device_index_entry.grid(row=8, column=1, sticky=tk.W, pady=5)
+        # Device Index (Microphone selector)
+        ttk.Label(self.whisper_frame, text="Microphone:", font=("Arial", 9)).grid(row=8, column=0, sticky=tk.W, pady=5)
+        self.whisper_device_index_var = tk.StringVar(value="Default")
+
+        # Get available audio devices
+        audio_devices = self._get_audio_input_devices()
+
+        device_index_combo = ttk.Combobox(
+            self.whisper_frame,
+            textvariable=self.whisper_device_index_var,
+            values=audio_devices,
+            state="readonly",
+            width=40
+        )
+        device_index_combo.grid(row=8, column=1, columnspan=2, sticky=tk.W, pady=5)
+
+        # Info note about sample rate compatibility
+        info_label = ttk.Label(
+            self.whisper_frame,
+            text="ℹ️ If the selected microphone doesn't support the configured sample rate, "
+                 "the device's native sample rate will be used automatically.",
+            font=("Arial", 8, "italic"),
+            foreground="#666666",
+            wraplength=600
+        )
+        info_label.grid(row=9, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
 
         # Silence Duration
-        ttk.Label(self.whisper_frame, text="Silence Duration:", font=("Arial", 9)).grid(row=9, column=0, sticky=tk.W, pady=5)
+        ttk.Label(self.whisper_frame, text="Silence Duration:", font=("Arial", 9)).grid(row=10, column=0, sticky=tk.W, pady=5)
         self.whisper_silence_var = tk.DoubleVar(value=1.0)
         silence_spinbox = ttk.Spinbox(
             self.whisper_frame,
@@ -475,10 +568,10 @@ class MainWindow:
             textvariable=self.whisper_silence_var,
             width=16
         )
-        silence_spinbox.grid(row=9, column=1, sticky=tk.W, pady=5)
+        silence_spinbox.grid(row=10, column=1, sticky=tk.W, pady=5)
 
         # Energy Threshold
-        ttk.Label(self.whisper_frame, text="Energy Threshold:", font=("Arial", 9)).grid(row=10, column=0, sticky=tk.W, pady=5)
+        ttk.Label(self.whisper_frame, text="Energy Threshold:", font=("Arial", 9)).grid(row=11, column=0, sticky=tk.W, pady=5)
         self.whisper_energy_var = tk.DoubleVar(value=0.008)
         energy_spinbox = ttk.Spinbox(
             self.whisper_frame,
@@ -486,10 +579,10 @@ class MainWindow:
             textvariable=self.whisper_energy_var,
             width=16
         )
-        energy_spinbox.grid(row=10, column=1, sticky=tk.W, pady=5)
+        energy_spinbox.grid(row=11, column=1, sticky=tk.W, pady=5)
 
         # Min Audio Length
-        ttk.Label(self.whisper_frame, text="Min Audio Length:", font=("Arial", 9)).grid(row=11, column=0, sticky=tk.W, pady=5)
+        ttk.Label(self.whisper_frame, text="Min Audio Length:", font=("Arial", 9)).grid(row=12, column=0, sticky=tk.W, pady=5)
         self.whisper_min_audio_var = tk.DoubleVar(value=0.3)
         min_audio_spinbox = ttk.Spinbox(
             self.whisper_frame,
@@ -497,10 +590,10 @@ class MainWindow:
             textvariable=self.whisper_min_audio_var,
             width=16
         )
-        min_audio_spinbox.grid(row=11, column=1, sticky=tk.W, pady=5)
+        min_audio_spinbox.grid(row=12, column=1, sticky=tk.W, pady=5)
 
         # Sample Rate
-        ttk.Label(self.whisper_frame, text="Sample Rate:", font=("Arial", 9)).grid(row=12, column=0, sticky=tk.W, pady=5)
+        ttk.Label(self.whisper_frame, text="Sample Rate:", font=("Arial", 9)).grid(row=13, column=0, sticky=tk.W, pady=5)
         self.whisper_sample_rate_var = tk.IntVar(value=16000)
         sample_rate_combo = ttk.Combobox(
             self.whisper_frame,
@@ -509,10 +602,10 @@ class MainWindow:
             state="readonly",
             width=15
         )
-        sample_rate_combo.grid(row=12, column=1, sticky=tk.W, pady=5)
+        sample_rate_combo.grid(row=13, column=1, sticky=tk.W, pady=5)
 
         # Chunk Size
-        ttk.Label(self.whisper_frame, text="Chunk Size:", font=("Arial", 9)).grid(row=13, column=0, sticky=tk.W, pady=5)
+        ttk.Label(self.whisper_frame, text="Chunk Size:", font=("Arial", 9)).grid(row=14, column=0, sticky=tk.W, pady=5)
         self.whisper_chunk_size_var = tk.IntVar(value=480)
         chunk_size_combo = ttk.Combobox(
             self.whisper_frame,
@@ -521,10 +614,10 @@ class MainWindow:
             state="readonly",
             width=15
         )
-        chunk_size_combo.grid(row=13, column=1, sticky=tk.W, pady=5)
+        chunk_size_combo.grid(row=14, column=1, sticky=tk.W, pady=5)
 
         # Channels
-        ttk.Label(self.whisper_frame, text="Channels:", font=("Arial", 9)).grid(row=14, column=0, sticky=tk.W, pady=5)
+        ttk.Label(self.whisper_frame, text="Channels:", font=("Arial", 9)).grid(row=15, column=0, sticky=tk.W, pady=5)
         self.whisper_channels_var = tk.IntVar(value=1)
         channels_combo = ttk.Combobox(
             self.whisper_frame,
@@ -533,10 +626,10 @@ class MainWindow:
             state="readonly",
             width=15
         )
-        channels_combo.grid(row=14, column=1, sticky=tk.W, pady=5)
+        channels_combo.grid(row=15, column=1, sticky=tk.W, pady=5)
 
         # VAD Aggressiveness
-        ttk.Label(self.whisper_frame, text="VAD Aggressiveness:", font=("Arial", 9)).grid(row=15, column=0, sticky=tk.W, pady=5)
+        ttk.Label(self.whisper_frame, text="VAD Aggressiveness:", font=("Arial", 9)).grid(row=16, column=0, sticky=tk.W, pady=5)
         self.whisper_vad_aggressiveness_var = tk.IntVar(value=2)
         vad_combo = ttk.Combobox(
             self.whisper_frame,
@@ -545,7 +638,7 @@ class MainWindow:
             state="readonly",
             width=15
         )
-        vad_combo.grid(row=15, column=1, sticky=tk.W, pady=5)
+        vad_combo.grid(row=16, column=1, sticky=tk.W, pady=5)
 
     def _reset_whisper_advanced_settings(self):
         """Reset Whisper advanced settings to default values"""
@@ -554,7 +647,7 @@ class MainWindow:
         # Default values
         self.whisper_device_var.set("cuda")
         self.whisper_compute_type_var.set("float16")
-        self.whisper_device_index_var.set("")
+        self.whisper_device_index_var.set("Default")  # Use "Default" instead of ""
         self.whisper_silence_var.set(0.5)
         self.whisper_energy_var.set(0.008)
         self.whisper_min_audio_var.set(0.3)
@@ -1138,9 +1231,10 @@ class MainWindow:
         self.whisper_compute_type_var.set(
             self.database.get_setting('whisper_compute_type', self.config.whisper_compute_type)
         )
-        self.whisper_device_index_var.set(
-            self.database.get_setting('whisper_device_index', '')
-        )
+        # Load device index and convert to display format
+        device_index_db = self.database.get_setting('whisper_device_index', '')
+        device_display = self._device_index_to_display(device_index_db)
+        self.whisper_device_index_var.set(device_display)
 
         # Load numeric settings
         try:
@@ -1275,17 +1369,7 @@ class MainWindow:
 
     def _validate_inputs(self):
         """Validate all input fields"""
-        # Validate device index
-        device_index = self.whisper_device_index_var.get().strip()
-        if device_index:
-            try:
-                int(device_index)
-            except ValueError:
-                messagebox.showerror(
-                    "Validation Error",
-                    "Device Index must be a number or empty for auto-detect"
-                )
-                return False
+        # Device index is now a combobox with valid values only, no validation needed
 
         # Validate numeric ranges
         silence = self.whisper_silence_var.get()
@@ -1367,7 +1451,10 @@ class MainWindow:
             self.database.save_setting('whisper_model', model_id)
             self.database.save_setting('whisper_device', self.whisper_device_var.get())
             self.database.save_setting('whisper_compute_type', self.whisper_compute_type_var.get())
-            self.database.save_setting('whisper_device_index', self.whisper_device_index_var.get())
+            # Convert device display format to index before saving
+            device_display = self.whisper_device_index_var.get()
+            device_index = self._device_display_to_index(device_display)
+            self.database.save_setting('whisper_device_index', device_index)
             self.database.save_setting('whisper_silence_duration', str(self.whisper_silence_var.get()))
             self.database.save_setting('whisper_energy_threshold', str(self.whisper_energy_var.get()))
             self.database.save_setting('whisper_min_audio_length', str(self.whisper_min_audio_var.get()))

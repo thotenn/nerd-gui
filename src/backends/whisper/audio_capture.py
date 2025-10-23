@@ -37,7 +37,9 @@ class MicrophoneStream:
             format: Audio format (16-bit PCM)
             device_index: Specific audio device index (None for default)
         """
-        self.sample_rate = sample_rate
+        self.target_sample_rate = sample_rate  # What Whisper wants (16kHz)
+        self.actual_sample_rate = sample_rate  # What we're actually using (may be different)
+        self.sample_rate = sample_rate  # For compatibility
         self.chunk_size = chunk_size
         self.channels = channels
         self.format = format
@@ -48,6 +50,18 @@ class MicrophoneStream:
         self.is_recording = False
         self.audio_queue = queue.Queue()
         self.recording_thread: Optional[threading.Thread] = None
+
+    def _get_device_native_sample_rate(self, device_index):
+        """Get the native sample rate of the audio device"""
+        try:
+            if device_index is None:
+                return None  # Use requested rate for default device
+
+            device_info = self.audio.get_device_info_by_index(device_index)
+            return int(device_info.get('defaultSampleRate', self.sample_rate))
+        except Exception as e:
+            warning(f"Could not get device sample rate: {e}")
+            return None
 
     def start(self):
         """Start recording audio from microphone."""
@@ -71,13 +85,35 @@ class MicrophoneStream:
         if self.device_index is not None:
             stream_params['input_device_index'] = self.device_index
 
-        self.stream = self.audio.open(**stream_params)
+        # Try to open with requested sample rate
+        try:
+            self.stream = self.audio.open(**stream_params)
+            self.actual_sample_rate = self.target_sample_rate
+        except Exception as e:
+            # If it fails and we have a specific device, try with device's native rate
+            if self.device_index is not None:
+                native_rate = self._get_device_native_sample_rate(self.device_index)
+                if native_rate and native_rate != self.target_sample_rate:
+                    warning(f"Device {self.device_index} doesn't support {self.target_sample_rate}Hz, using {native_rate}Hz with resampling")
+                    stream_params['rate'] = native_rate
+                    try:
+                        self.stream = self.audio.open(**stream_params)
+                        self.actual_sample_rate = native_rate
+                        info(f"Using device native sample rate: {native_rate}Hz (will resample to {self.target_sample_rate}Hz)")
+                    except Exception as e2:
+                        error(f"Failed to open audio stream: {e2}")
+                        raise
+                else:
+                    raise
+            else:
+                raise
 
         self.recording_thread = threading.Thread(target=self._record_loop)
         self.recording_thread.daemon = True
         self.recording_thread.start()
 
-        info(f"Started recording at {self.sample_rate}Hz" +
+        info(f"Started recording at {self.actual_sample_rate}Hz" +
+                   (f" (resampling to {self.target_sample_rate}Hz)" if self.actual_sample_rate != self.target_sample_rate else "") +
                    (f" on device {self.device_index}" if self.device_index else ""))
 
     def stop(self):
@@ -128,6 +164,18 @@ class MicrophoneStream:
             audio_array = np.frombuffer(data, dtype=np.int16)
             # Convert to float32 and normalize to [-1, 1]
             audio_array = audio_array.astype(np.float32) / 32768.0
+
+            # Resample if necessary
+            if self.actual_sample_rate != self.target_sample_rate:
+                # Calculate new length after resampling
+                ratio = self.target_sample_rate / self.actual_sample_rate
+                new_length = int(len(audio_array) * ratio)
+
+                # Simple linear interpolation resampling
+                x_old = np.linspace(0, 1, len(audio_array))
+                x_new = np.linspace(0, 1, new_length)
+                audio_array = np.interp(x_new, x_old, audio_array)
+
             return audio_array
         except queue.Empty:
             return None
