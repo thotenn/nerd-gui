@@ -11,6 +11,7 @@ import os
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 from .base_backend import BaseBackend, BackendStatus
+from .vosk_model_manager import VoskModelManager
 
 from src.core.logging_controller import info, debug, warning, error, critical
 
@@ -41,6 +42,10 @@ class VoskBackend(BaseBackend):
         self.venv_python = venv_python
         self.models_dir = Path(models_dir)
 
+        # Initialize model manager for automatic downloads
+        self.model_manager = VoskModelManager(self.models_dir)
+        info("VoskModelManager initialized - models will download automatically if needed")
+
         # Verify paths exist
         if not self.nerd_dictation_dir.exists():
             error(f"nerd-dictation directory not found: {nerd_dictation_dir}")
@@ -56,15 +61,18 @@ class VoskBackend(BaseBackend):
         self.session_start_time: Optional[float] = None
         self.current_language: Optional[str] = None
         self.current_model_path: Optional[str] = None
+        self.current_model_size: Optional[str] = None  # Track model size
         self.nerd_dictation_process: Optional[subprocess.Popen] = None
 
-    def start(self, language: str, model_path: Optional[str] = None) -> bool:
+    def start(self, language: str, model_size: str = "small") -> bool:
         """
         Start Vosk dictation using nerd-dictation.
 
         Args:
             language: Language code (e.g., 'en', 'es')
-            model_path: Optional path to specific model
+            model_size: Model size ('small', 'medium', 'large', 'gigaspeech')
+                       OR model name/path for backward compatibility
+                       Default: 'small' for fast startup
 
         Returns:
             True if dictation started successfully
@@ -80,14 +88,15 @@ class VoskBackend(BaseBackend):
         try:
             self._set_status(BackendStatus.STARTING)
 
-            # Find or use specified model
-            if model_path:
-                model_full_path = self.models_dir / model_path
-            else:
-                model_full_path = self._find_best_model(language)
+            # Backward compatibility: detect if model_size is actually a path or model name
+            actual_model_size = self._normalize_model_size(language, model_size)
 
-            if not model_full_path or not model_full_path.exists():
-                error_msg = f"Model not found for language '{language}'"
+            # Get model path, downloading if necessary
+            info(f"Requesting Vosk model: {language}/{actual_model_size}")
+            model_full_path = self.model_manager.get_model_path(language, actual_model_size)
+
+            if not model_full_path:
+                error_msg = f"Failed to get model for language '{language}', size '{model_size}'"
                 error(error_msg)
                 self._set_status(BackendStatus.ERROR, error_msg)
                 return False
@@ -133,10 +142,11 @@ class VoskBackend(BaseBackend):
             self.session_start_time = time.time()
             self.current_language = language
             self.current_model_path = str(model_full_path)
+            self.current_model_size = actual_model_size  # Use normalized size
 
             self._set_status(BackendStatus.RUNNING)
-            info(f"Vosk dictation started with language '{language}' "
-                       f"using model '{model_full_path.name}'")
+            info(f"Vosk dictation started with language '{language}', "
+                       f"size '{actual_model_size}' using model '{model_full_path.name}'")
 
             return True
 
@@ -188,32 +198,23 @@ class VoskBackend(BaseBackend):
             self._set_status(BackendStatus.ERROR, error_msg)
             return False
 
-    def get_available_models(self, language: Optional[str] = None) -> List[str]:
+    def get_available_models(self, language: Optional[str] = None) -> Dict[str, Any]:
         """
-        Get available Vosk models.
+        Get available Vosk models (both downloaded and available for download).
 
         Args:
             language: Optional language to filter models
 
         Returns:
-            List of available model names
+            Dictionary with 'downloaded' and 'available' models
         """
-        if not self.models_dir.exists():
-            warning(f"Models directory not found: {self.models_dir}")
-            return []
+        downloaded = self.model_manager.list_downloaded_models()
+        available = self.model_manager.list_available_models(language)
 
-        models = []
-        for model_dir in self.models_dir.iterdir():
-            if model_dir.is_dir() and model_dir.name.startswith("vosk-model"):
-                # Filter by language if specified
-                if language:
-                    # Check if model name contains language code
-                    if f"-{language}-" in model_dir.name or model_dir.name.endswith(f"-{language}"):
-                        models.append(model_dir.name)
-                else:
-                    models.append(model_dir.name)
-
-        return sorted(models)
+        return {
+            'downloaded': downloaded,
+            'available': available
+        }
 
     def supports_language(self, language: str) -> bool:
         """
@@ -225,44 +226,64 @@ class VoskBackend(BaseBackend):
         Returns:
             True if language is supported
         """
-        models = self.get_available_models(language)
-        return len(models) > 0
+        available = self.model_manager.list_available_models(language)
+        return language in available and len(available[language]) > 0
 
-    def _find_best_model(self, language: str) -> Optional[Path]:
+    def _normalize_model_size(self, language: str, model_input: str) -> str:
         """
-        Find the best available model for a language.
+        Normalize model input to a standard size.
 
-        Prefers larger models when available.
+        Handles backward compatibility with old model names/paths.
 
         Args:
             language: Language code
+            model_input: Can be:
+                - Size: 'small', 'medium', 'large', 'gigaspeech'
+                - Model name: 'vosk-model-es-0.42'
+                - Full path: '/path/to/vosk-model-es-0.42'
 
         Returns:
-            Path to best model or None if not found
+            Normalized size string
         """
-        models = self.get_available_models(language)
-        if not models:
-            return None
+        # If already a valid size, return as-is
+        valid_sizes = {'small', 'medium', 'large', 'gigaspeech'}
+        if model_input in valid_sizes:
+            return model_input
 
-        # Sort models by size preference (large > medium > small > tiny)
-        size_priority = {
-            'large': 4,
-            'medium': 3,
-            'small': 2,
-            'tiny': 1,
-            'base': 2  # Consider base similar to small
-        }
+        # Extract model name from path if it's a full path
+        if '/' in model_input:
+            model_name = Path(model_input).name
+            debug(f"Extracted model name from path: {model_name}")
+        else:
+            model_name = model_input
 
-        def model_priority(model_name):
-            for size, priority in size_priority.items():
-                if size in model_name:
-                    return priority
-            return 0  # Unknown size
+        # Map model names to sizes
+        # English models
+        if 'small-en' in model_name or model_name == 'vosk-model-small-en-us-0.15':
+            return 'small'
+        elif 'gigaspeech' in model_name or model_name == 'vosk-model-en-us-0.42-gigaspeech':
+            return 'gigaspeech'
+        elif language == 'en' and ('0.22' in model_name or 'lgraph' in model_name):
+            # Handles both old (vosk-model-en-us-0.22) and new (vosk-model-en-us-0.22-lgraph)
+            return 'medium'
 
-        models.sort(key=model_priority, reverse=True)
-        best_model = models[0]
+        # Spanish models
+        elif 'small-es' in model_name or model_name == 'vosk-model-small-es-0.42':
+            return 'small'
+        elif language == 'es' and 'vosk-model-es-0.42' == model_name:
+            return 'large'
 
-        return self.models_dir / best_model
+        # Fallback: try to detect 'small' or 'large' in name
+        if 'small' in model_name.lower():
+            return 'small'
+        elif 'large' in model_name.lower():
+            return 'large'
+        elif 'medium' in model_name.lower():
+            return 'medium'
+
+        # Default fallback
+        warning(f"Could not determine size from '{model_input}', defaulting to 'small'")
+        return 'small'
 
     def _is_nerd_dictation_running(self) -> bool:
         """Check if nerd-dictation is currently running."""
@@ -335,11 +356,9 @@ class VoskBackend(BaseBackend):
             'nerd_dictation_running': self._is_nerd_dictation_running(),
             'current_language': self.current_language,
             'current_model': Path(self.current_model_path).name if self.current_model_path else None,
-            'models_dir': str(self.models_dir),
-            'available_models': {
-                'es': self.get_available_models('es'),
-                'en': self.get_available_models('en')
-            }
+            'models_dir': str(self.models_dir)
+            # Note: available_models removed - expensive to compute and not needed for status updates
+            # Use get_available_models() directly when needed (e.g., in settings)
         }
 
         if self.session_start_time:

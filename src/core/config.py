@@ -16,7 +16,15 @@ class Config:
         # Base paths (from .env or defaults)
         self.home_dir = Path.home()
         self.app_dir = Path(env_vars.get("APP_DIR"))
-        self.nerd_dictation_dir = Path(env_vars.get("NERD_DICTATION_DIR"))
+
+        # nerd-dictation: Use local copy from apps/ by default, fallback to env var
+        nerd_dictation_env = env_vars.get("NERD_DICTATION_DIR", "")
+        if nerd_dictation_env and Path(nerd_dictation_env).exists():
+            self.nerd_dictation_dir = Path(nerd_dictation_env)
+        else:
+            # Use local integrated copy
+            self.nerd_dictation_dir = self.app_dir / "apps" / "nerd-dictation"
+
         self.models_dir = Path(env_vars.get("MODELS_DIR"))
 
         # Database
@@ -40,21 +48,16 @@ class Config:
         self.whisper_silence_duration = float(env_vars.get("WHISPER_SILENCE_DURATION", "1.0"))
         self.whisper_energy_threshold = float(env_vars.get("WHISPER_ENERGY_THRESHOLD", "0.002"))
         self.whisper_min_audio_length = float(env_vars.get("WHISPER_MIN_AUDIO_LENGTH", "0.3"))
+        self.whisper_sample_rate = int(env_vars.get("WHISPER_SAMPLE_RATE", "16000"))
+        self.whisper_chunk_size = int(env_vars.get("WHISPER_CHUNK_SIZE", "480"))
+        self.whisper_channels = int(env_vars.get("WHISPER_CHANNELS", "1"))
+        self.whisper_vad_aggressiveness = int(env_vars.get("WHISPER_VAD_AGGRESSIVENESS", "2"))
 
         # Debug flag (will be loaded from database)
         self.debug_enabled = False
 
-        # Language configurations
-        self.languages = {
-            "spanish": {
-                "name": "Español",
-                "code": "es"
-            },
-            "english": {
-                "name": "English",
-                "code": "en"
-            }
-        }
+        # Language configurations - loaded dynamically from models.json
+        self._load_languages_from_config()
 
         # Ensure directories exist
         self._create_directories()
@@ -62,6 +65,53 @@ class Config:
         # Load settings from database if available
         if self.database:
             self.reload_from_db()
+
+    def _load_languages_from_config(self):
+        """Load language configurations from models.json via ModelConfigLoader."""
+        from src.core.model_config_loader import get_model_config_loader
+
+        loader = get_model_config_loader()
+        json_languages = loader.get_languages()
+
+        # Convert from JSON format to internal format
+        # JSON: {"en": {"name": "English", "code": "en", "flag": "🇺🇸", ...}}
+        # Internal: {"english": {"name": "English", "code": "en"}}
+
+        self.languages = {}
+        for code, info in json_languages.items():
+            # Create key from language name (lowercase)
+            key = info.get("name", code).lower()
+
+            self.languages[key] = {
+                "name": info.get("name", code),
+                "code": info.get("code", code),
+                "flag": info.get("flag", ""),
+                "vosk_supported": info.get("vosk_supported", False),
+                "whisper_supported": info.get("whisper_supported", False)
+            }
+
+    def get_supported_languages(self, backend: str = None):
+        """
+        Get languages supported by a specific backend.
+
+        Args:
+            backend: 'vosk' or 'whisper'. If None, returns all languages.
+
+        Returns:
+            Dictionary of supported languages
+        """
+        if backend == "vosk":
+            return {
+                key: info for key, info in self.languages.items()
+                if info.get("vosk_supported", False)
+            }
+        elif backend == "whisper":
+            return {
+                key: info for key, info in self.languages.items()
+                if info.get("whisper_supported", False)
+            }
+
+        return self.languages
 
     def _load_env(self):
         """Load environment variables from .env file"""
@@ -209,6 +259,35 @@ class Config:
             if min_audio_str:
                 try:
                     self.whisper_min_audio_length = float(min_audio_str)
+                except ValueError:
+                    pass  # Keep default
+
+            # Load audio capture parameters
+            sample_rate_str = self.database.get_setting('whisper_sample_rate')
+            if sample_rate_str:
+                try:
+                    self.whisper_sample_rate = int(sample_rate_str)
+                except ValueError:
+                    pass  # Keep default
+
+            chunk_size_str = self.database.get_setting('whisper_chunk_size')
+            if chunk_size_str:
+                try:
+                    self.whisper_chunk_size = int(chunk_size_str)
+                except ValueError:
+                    pass  # Keep default
+
+            channels_str = self.database.get_setting('whisper_channels')
+            if channels_str:
+                try:
+                    self.whisper_channels = int(channels_str)
+                except ValueError:
+                    pass  # Keep default
+
+            vad_aggressiveness_str = self.database.get_setting('whisper_vad_aggressiveness')
+            if vad_aggressiveness_str:
+                try:
+                    self.whisper_vad_aggressiveness = int(vad_aggressiveness_str)
                 except ValueError:
                     pass  # Keep default
 

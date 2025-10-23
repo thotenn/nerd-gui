@@ -23,7 +23,7 @@ echo "🚀 Starting Dictation Manager..."
 source "$VENV_PATH/bin/activate"
 
 # Add cuDNN libraries to LD_LIBRARY_PATH for CUDA support
-export LD_LIBRARY_PATH="$VENV_PATH/lib/python3.12/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="$VENV_PATH/lib/python3.11/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH"
 
 cd "$SCRIPT_DIR"
 python main.py "$@"

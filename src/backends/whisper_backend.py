@@ -43,6 +43,9 @@ class WhisperBackend(BaseBackend):
                  silence_duration: float = 1.0,
                  energy_threshold: float = 0.002,
                  min_audio_length: float = 0.3,
+                 chunk_size: int = 480,
+                 channels: int = 1,
+                 vad_aggressiveness: int = 2,
                  database=None):
         """
         Initialize Whisper backend.
@@ -56,6 +59,9 @@ class WhisperBackend(BaseBackend):
             silence_duration: Seconds of silence before processing speech
             energy_threshold: Microphone sensitivity threshold
             min_audio_length: Minimum audio length in seconds to process
+            chunk_size: Audio chunk size for VAD (must be 160, 320, 480, or 960)
+            channels: Number of audio channels (1 for mono, 2 for stereo)
+            vad_aggressiveness: WebRTC VAD aggressiveness level (0-3)
             database: Database instance for voice command settings (optional)
         """
         super().__init__("Whisper")
@@ -67,11 +73,16 @@ class WhisperBackend(BaseBackend):
         self.sample_rate = sample_rate
         self.database = database
 
+        # Audio capture configuration
+        self.chunk_size = chunk_size
+        self.channels = channels
+
         # VAD configuration
         self.device_index = device_index
         self.silence_duration = silence_duration
         self.energy_threshold = energy_threshold
         self.min_audio_length = min_audio_length
+        self.vad_aggressiveness = vad_aggressiveness
 
         # Session tracking (initialize even if dependencies missing)
         self.session_start_time: Optional[float] = None
@@ -220,8 +231,11 @@ class WhisperBackend(BaseBackend):
                 sample_rate=self.sample_rate,
                 device_index=self.device_index,
                 min_audio_length=self.min_audio_length,
+                chunk_size=self.chunk_size,
+                channels=self.channels,
                 silence_duration=self.silence_duration,
-                energy_threshold=self.energy_threshold
+                energy_threshold=self.energy_threshold,
+                vad_aggressiveness=self.vad_aggressiveness
             )
             self.audio_capture.start()
 

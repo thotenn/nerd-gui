@@ -23,7 +23,7 @@ class MicrophoneStream:
 
     def __init__(self,
                  sample_rate: int = 16000,
-                 chunk_size: int = 1024,
+                 chunk_size: int = 480,
                  channels: int = 1,
                  format: int = pyaudio.paInt16,
                  device_index: Optional[int] = None):
@@ -32,12 +32,14 @@ class MicrophoneStream:
 
         Args:
             sample_rate: Audio sample rate (Whisper expects 16kHz)
-            chunk_size: Number of audio frames per buffer
+            chunk_size: Number of audio frames per buffer (480 = 30ms at 16kHz, required for WebRTC VAD)
             channels: Number of audio channels (1 for mono)
             format: Audio format (16-bit PCM)
             device_index: Specific audio device index (None for default)
         """
-        self.sample_rate = sample_rate
+        self.target_sample_rate = sample_rate  # What Whisper wants (16kHz)
+        self.actual_sample_rate = sample_rate  # What we're actually using (may be different)
+        self.sample_rate = sample_rate  # For compatibility
         self.chunk_size = chunk_size
         self.channels = channels
         self.format = format
@@ -48,6 +50,18 @@ class MicrophoneStream:
         self.is_recording = False
         self.audio_queue = queue.Queue()
         self.recording_thread: Optional[threading.Thread] = None
+
+    def _get_device_native_sample_rate(self, device_index):
+        """Get the native sample rate of the audio device"""
+        try:
+            if device_index is None:
+                return None  # Use requested rate for default device
+
+            device_info = self.audio.get_device_info_by_index(device_index)
+            return int(device_info.get('defaultSampleRate', self.sample_rate))
+        except Exception as e:
+            warning(f"Could not get device sample rate: {e}")
+            return None
 
     def start(self):
         """Start recording audio from microphone."""
@@ -71,13 +85,35 @@ class MicrophoneStream:
         if self.device_index is not None:
             stream_params['input_device_index'] = self.device_index
 
-        self.stream = self.audio.open(**stream_params)
+        # Try to open with requested sample rate
+        try:
+            self.stream = self.audio.open(**stream_params)
+            self.actual_sample_rate = self.target_sample_rate
+        except Exception as e:
+            # If it fails and we have a specific device, try with device's native rate
+            if self.device_index is not None:
+                native_rate = self._get_device_native_sample_rate(self.device_index)
+                if native_rate and native_rate != self.target_sample_rate:
+                    warning(f"Device {self.device_index} doesn't support {self.target_sample_rate}Hz, using {native_rate}Hz with resampling")
+                    stream_params['rate'] = native_rate
+                    try:
+                        self.stream = self.audio.open(**stream_params)
+                        self.actual_sample_rate = native_rate
+                        info(f"Using device native sample rate: {native_rate}Hz (will resample to {self.target_sample_rate}Hz)")
+                    except Exception as e2:
+                        error(f"Failed to open audio stream: {e2}")
+                        raise
+                else:
+                    raise
+            else:
+                raise
 
         self.recording_thread = threading.Thread(target=self._record_loop)
         self.recording_thread.daemon = True
         self.recording_thread.start()
 
-        info(f"Started recording at {self.sample_rate}Hz" +
+        info(f"Started recording at {self.actual_sample_rate}Hz" +
+                   (f" (resampling to {self.target_sample_rate}Hz)" if self.actual_sample_rate != self.target_sample_rate else "") +
                    (f" on device {self.device_index}" if self.device_index else ""))
 
     def stop(self):
@@ -128,6 +164,20 @@ class MicrophoneStream:
             audio_array = np.frombuffer(data, dtype=np.int16)
             # Convert to float32 and normalize to [-1, 1]
             audio_array = audio_array.astype(np.float32) / 32768.0
+
+            # Resample if necessary
+            if self.actual_sample_rate != self.target_sample_rate:
+                # Calculate new length after resampling
+                ratio = self.target_sample_rate / self.actual_sample_rate
+                new_length = int(len(audio_array) * ratio)
+
+                # Simple linear interpolation resampling
+                x_old = np.linspace(0, 1, len(audio_array))
+                x_new = np.linspace(0, 1, new_length)
+                audio_array = np.interp(x_new, x_old, audio_array)
+                # np.interp returns float64, convert back to float32 for Whisper
+                audio_array = audio_array.astype(np.float32)
+
             return audio_array
         except queue.Empty:
             return None
@@ -145,7 +195,8 @@ class VoiceActivityDetector:
                  sample_rate: int = 16000,
                  frame_duration_ms: int = 30,
                  energy_threshold: float = 0.001,
-                 silence_duration: float = 1.0):
+                 silence_duration: float = 1.0,
+                 vad_aggressiveness: int = 2):
         """
         Initialize VAD.
 
@@ -154,11 +205,13 @@ class VoiceActivityDetector:
             frame_duration_ms: Duration of each frame in milliseconds
             energy_threshold: Minimum audio energy to consider as speech (lowered for better sensitivity)
             silence_duration: Seconds of silence before considering speech ended
+            vad_aggressiveness: WebRTC VAD aggressiveness level (0-3, default 2)
         """
         self.sample_rate = sample_rate
         self.frame_size = int(sample_rate * frame_duration_ms / 1000)
         self.energy_threshold = energy_threshold
         self.silence_frames = int(silence_duration * 1000 / frame_duration_ms)
+        self.vad_aggressiveness = vad_aggressiveness
 
         self.is_speaking = False
         self.silence_counter = 0
@@ -167,9 +220,9 @@ class VoiceActivityDetector:
         # Try to import webrtcvad, fallback to energy-based detection
         try:
             import webrtcvad
-            self.vad = webrtcvad.Vad(3)  # Aggressiveness level 3 (highest)
+            self.vad = webrtcvad.Vad(self.vad_aggressiveness)
             self.use_webrtcvad = True
-            info("Using WebRTC VAD")
+            info(f"Using WebRTC VAD with aggressiveness level {self.vad_aggressiveness}")
         except ImportError:
             self.vad = None
             self.use_webrtcvad = False
@@ -276,6 +329,9 @@ class AudioCapture:
                  sample_rate: int = 16000,
                  device_index: Optional[int] = None,
                  min_audio_length: float = 0.3,
+                 chunk_size: int = 480,
+                 channels: int = 1,
+                 vad_aggressiveness: int = 2,
                  **kwargs):
         """
         Initialize audio capture.
@@ -285,14 +341,26 @@ class AudioCapture:
             sample_rate: Audio sample rate
             device_index: Specific audio device index (None for default)
             min_audio_length: Minimum audio length in seconds to process
+            chunk_size: Audio chunk size for VAD (must be 160, 320, 480, or 960)
+            channels: Number of audio channels (1 for mono, 2 for stereo)
+            vad_aggressiveness: WebRTC VAD aggressiveness level (0-3)
             **kwargs: Additional arguments for VAD
         """
         self.on_audio_chunk = on_audio_chunk
         self.sample_rate = sample_rate
         self.min_audio_length = min_audio_length
 
-        self.mic_stream = MicrophoneStream(sample_rate=sample_rate, device_index=device_index)
-        self.vad = VoiceActivityDetector(sample_rate=sample_rate, **kwargs)
+        self.mic_stream = MicrophoneStream(
+            sample_rate=sample_rate,
+            device_index=device_index,
+            chunk_size=chunk_size,
+            channels=channels
+        )
+        self.vad = VoiceActivityDetector(
+            sample_rate=sample_rate,
+            vad_aggressiveness=vad_aggressiveness,
+            **kwargs
+        )
 
         self.is_running = False
         self.capture_thread: Optional[threading.Thread] = None

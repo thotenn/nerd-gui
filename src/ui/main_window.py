@@ -76,19 +76,33 @@ class MainWindow:
         # Configure grid
         self.main_frame.columnconfigure(0, weight=1)
 
+        # Title frame with Settings button on the right
+        title_frame = ttk.Frame(self.main_frame)
+        title_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 20))
+        title_frame.columnconfigure(0, weight=1)
+
         # Title
         title_label = ttk.Label(
-            self.main_frame,
+            title_frame,
             text="🎤 Dictation Manager",
             font=("Arial", 18, "bold")
         )
-        title_label.grid(row=0, column=0, pady=(0, 20))
+        title_label.grid(row=0, column=0, sticky=tk.W)
 
-        # Status frame
+        # Settings button (icon only)
+        self.settings_btn = ttk.Button(
+            title_frame,
+            text="⚙",
+            command=self._on_settings_clicked,
+            width=3
+        )
+        self.settings_btn.grid(row=0, column=1, sticky=tk.E, padx=(10, 0))
+
+        # Status frame (will include STOP button)
         self._create_status_frame(self.main_frame)
 
-        # Control buttons frame
-        self._create_control_buttons(self.main_frame)
+        # Language buttons frame (only language buttons, no STOP/Settings)
+        self._create_language_buttons(self.main_frame)
 
         # Download progress frame (hidden by default)
         self._create_progress_frame(self.main_frame)
@@ -240,10 +254,33 @@ class MainWindow:
         self.vosk_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(15, 0))
         self.vosk_frame.columnconfigure(1, weight=1)
 
-        # Get available Vosk models
-        all_models = self.config.get_available_models()
-        spanish_models = [m["name"] for m in all_models if m["language"] == "spanish"]
-        english_models = [m["name"] for m in all_models if m["language"] == "english"]
+        # Get available Vosk models from VoskModelManager (all available for download)
+        from src.backends.vosk_model_manager import VoskModelManager
+        manager = VoskModelManager(self.config.models_dir)
+
+        # Get model sizes for each language (not file names, but sizes)
+        spanish_models_dict = manager.list_available_models('es').get('es', {})
+        english_models_dict = manager.list_available_models('en').get('en', {})
+
+        # Create display-friendly options with size and description
+        spanish_options = [
+            f"{size} - {info['description']}"
+            for size, info in spanish_models_dict.items()
+        ]
+        english_options = [
+            f"{size} - {info['description']}"
+            for size, info in english_models_dict.items()
+        ]
+
+        # Store mapping from display name to size
+        self.vosk_spanish_size_map = {
+            f"{size} - {info['description']}": size
+            for size, info in spanish_models_dict.items()
+        }
+        self.vosk_english_size_map = {
+            f"{size} - {info['description']}": size
+            for size, info in english_models_dict.items()
+        }
 
         # Spanish model selection
         ttk.Label(
@@ -256,22 +293,24 @@ class MainWindow:
         self.vosk_spanish_combo = ttk.Combobox(
             self.vosk_frame,
             textvariable=self.vosk_spanish_var,
-            values=spanish_models,
+            values=spanish_options,
             state="readonly",
             width=50
         )
         self.vosk_spanish_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=(0, 5))
 
-        if spanish_models:
-            self.vosk_spanish_combo.set(spanish_models[0])
+        # Set default to 'small'
+        if spanish_options:
+            default = [opt for opt in spanish_options if opt.startswith('small')]
+            self.vosk_spanish_combo.set(default[0] if default else spanish_options[0])
 
-        # Warning for Spanish if no models
-        if not spanish_models:
-            ttk.Label(
-                self.vosk_frame,
-                text="⚠ No Spanish models found in models directory",
-                foreground="orange"
-            ).grid(row=1, column=1, sticky=tk.W, pady=(0, 10))
+        # Help text for Spanish
+        ttk.Label(
+            self.vosk_frame,
+            text="💡 Models download automatically on first use",
+            font=("Arial", 8),
+            foreground="gray"
+        ).grid(row=1, column=1, sticky=tk.W, pady=(0, 10))
 
         # English model selection
         ttk.Label(
@@ -284,22 +323,24 @@ class MainWindow:
         self.vosk_english_combo = ttk.Combobox(
             self.vosk_frame,
             textvariable=self.vosk_english_var,
-            values=english_models,
+            values=english_options,
             state="readonly",
             width=50
         )
         self.vosk_english_combo.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=(10, 5))
 
-        if english_models:
-            self.vosk_english_combo.set(english_models[0])
+        # Set default to 'small'
+        if english_options:
+            default = [opt for opt in english_options if opt.startswith('small')]
+            self.vosk_english_combo.set(default[0] if default else english_options[0])
 
-        # Warning for English if no models
-        if not english_models:
-            ttk.Label(
-                self.vosk_frame,
-                text="⚠ No English models found in models directory",
-                foreground="orange"
-            ).grid(row=3, column=1, sticky=tk.W)
+        # Help text for English
+        ttk.Label(
+            self.vosk_frame,
+            text="💡 Models download automatically on first use",
+            font=("Arial", 8),
+            foreground="gray"
+        ).grid(row=3, column=1, sticky=tk.W, pady=(0, 10))
 
         # Info about models location
         models_path = str(self.config.models_dir)
@@ -374,14 +415,98 @@ class MainWindow:
         # Advanced settings
         self._create_whisper_advanced_settings()
 
+    def _get_audio_input_devices(self):
+        """Get list of available audio input devices"""
+        try:
+            import pyaudio
+            p = pyaudio.PyAudio()
+
+            devices = ["Default"]  # First option is always default
+
+            for i in range(p.get_device_count()):
+                try:
+                    info = p.get_device_info_by_index(i)
+                    # Only include devices with input channels
+                    if info['maxInputChannels'] > 0:
+                        # Format: "index: Device Name"
+                        device_name = info['name']
+                        devices.append(f"{i}: {device_name}")
+                except Exception:
+                    continue  # Skip problematic devices
+
+            p.terminate()
+            return devices
+
+        except Exception as e:
+            from src.core.logging_controller import warning
+            warning(f"Could not enumerate audio devices: {e}")
+            return ["Default"]  # Fallback to just default
+
+    def _device_display_to_index(self, display_value):
+        """Convert display format to device index
+
+        Args:
+            display_value: Either "Default" or "5: Device Name"
+
+        Returns:
+            Empty string for "Default", or the index as string (e.g., "5")
+        """
+        if display_value == "Default" or not display_value:
+            return ""
+
+        # Extract index from "5: Device Name" format
+        try:
+            index = display_value.split(":")[0].strip()
+            return index
+        except Exception:
+            return ""
+
+    def _device_index_to_display(self, index_value):
+        """Convert device index to display format
+
+        Args:
+            index_value: Empty string or index number (e.g., "5" or 5)
+
+        Returns:
+            Display format: "Default" or "5: Device Name" (if device exists)
+        """
+        if not index_value or index_value == "":
+            return "Default"
+
+        # Get current available devices
+        devices = self._get_audio_input_devices()
+
+        # Try to find matching device
+        index_str = str(index_value)
+        for device in devices:
+            if device.startswith(f"{index_str}:"):
+                return device
+
+        # If device not found, return Default
+        from src.core.logging_controller import warning
+        warning(f"Audio device index {index_value} not found, using Default")
+        return "Default"
+
     def _create_whisper_advanced_settings(self):
         """Create Whisper advanced parameters section"""
-        # Advanced settings label
+        # Advanced settings header with Reset button
+        header_frame = ttk.Frame(self.whisper_frame)
+        header_frame.grid(row=5, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
+
         ttk.Label(
-            self.whisper_frame,
+            header_frame,
             text="Advanced Settings",
             font=("Arial", 11, "bold")
-        ).grid(row=5, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
+        ).pack(side=tk.LEFT)
+
+        # Reset button
+        reset_btn = ttk.Button(
+            header_frame,
+            text="Reset",
+            command=self._reset_whisper_advanced_settings,
+            width=8
+        )
+        reset_btn.pack(side=tk.LEFT, padx=(10, 0))
 
         # Device selection
         ttk.Label(self.whisper_frame, text="Device:", font=("Arial", 9)).grid(row=6, column=0, sticky=tk.W, pady=5)
@@ -407,14 +532,35 @@ class MainWindow:
         )
         compute_combo.grid(row=7, column=1, sticky=tk.W, pady=5)
 
-        # Device Index
-        ttk.Label(self.whisper_frame, text="Device Index:", font=("Arial", 9)).grid(row=8, column=0, sticky=tk.W, pady=5)
-        self.whisper_device_index_var = tk.StringVar(value="")
-        device_index_entry = ttk.Entry(self.whisper_frame, textvariable=self.whisper_device_index_var, width=18)
-        device_index_entry.grid(row=8, column=1, sticky=tk.W, pady=5)
+        # Device Index (Microphone selector)
+        ttk.Label(self.whisper_frame, text="Microphone:", font=("Arial", 9)).grid(row=8, column=0, sticky=tk.W, pady=5)
+        self.whisper_device_index_var = tk.StringVar(value="Default")
+
+        # Get available audio devices
+        audio_devices = self._get_audio_input_devices()
+
+        device_index_combo = ttk.Combobox(
+            self.whisper_frame,
+            textvariable=self.whisper_device_index_var,
+            values=audio_devices,
+            state="readonly",
+            width=40
+        )
+        device_index_combo.grid(row=8, column=1, columnspan=2, sticky=tk.W, pady=5)
+
+        # Info note about sample rate compatibility
+        info_label = ttk.Label(
+            self.whisper_frame,
+            text="ℹ️ If the selected microphone doesn't support the configured sample rate, "
+                 "the device's native sample rate will be used automatically.",
+            font=("Arial", 8, "italic"),
+            foreground="#666666",
+            wraplength=600
+        )
+        info_label.grid(row=9, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
 
         # Silence Duration
-        ttk.Label(self.whisper_frame, text="Silence Duration:", font=("Arial", 9)).grid(row=9, column=0, sticky=tk.W, pady=5)
+        ttk.Label(self.whisper_frame, text="Silence Duration:", font=("Arial", 9)).grid(row=10, column=0, sticky=tk.W, pady=5)
         self.whisper_silence_var = tk.DoubleVar(value=1.0)
         silence_spinbox = ttk.Spinbox(
             self.whisper_frame,
@@ -422,10 +568,10 @@ class MainWindow:
             textvariable=self.whisper_silence_var,
             width=16
         )
-        silence_spinbox.grid(row=9, column=1, sticky=tk.W, pady=5)
+        silence_spinbox.grid(row=10, column=1, sticky=tk.W, pady=5)
 
         # Energy Threshold
-        ttk.Label(self.whisper_frame, text="Energy Threshold:", font=("Arial", 9)).grid(row=10, column=0, sticky=tk.W, pady=5)
+        ttk.Label(self.whisper_frame, text="Energy Threshold:", font=("Arial", 9)).grid(row=11, column=0, sticky=tk.W, pady=5)
         self.whisper_energy_var = tk.DoubleVar(value=0.008)
         energy_spinbox = ttk.Spinbox(
             self.whisper_frame,
@@ -433,10 +579,10 @@ class MainWindow:
             textvariable=self.whisper_energy_var,
             width=16
         )
-        energy_spinbox.grid(row=10, column=1, sticky=tk.W, pady=5)
+        energy_spinbox.grid(row=11, column=1, sticky=tk.W, pady=5)
 
         # Min Audio Length
-        ttk.Label(self.whisper_frame, text="Min Audio Length:", font=("Arial", 9)).grid(row=11, column=0, sticky=tk.W, pady=5)
+        ttk.Label(self.whisper_frame, text="Min Audio Length:", font=("Arial", 9)).grid(row=12, column=0, sticky=tk.W, pady=5)
         self.whisper_min_audio_var = tk.DoubleVar(value=0.3)
         min_audio_spinbox = ttk.Spinbox(
             self.whisper_frame,
@@ -444,7 +590,73 @@ class MainWindow:
             textvariable=self.whisper_min_audio_var,
             width=16
         )
-        min_audio_spinbox.grid(row=11, column=1, sticky=tk.W, pady=5)
+        min_audio_spinbox.grid(row=12, column=1, sticky=tk.W, pady=5)
+
+        # Sample Rate
+        ttk.Label(self.whisper_frame, text="Sample Rate:", font=("Arial", 9)).grid(row=13, column=0, sticky=tk.W, pady=5)
+        self.whisper_sample_rate_var = tk.IntVar(value=16000)
+        sample_rate_combo = ttk.Combobox(
+            self.whisper_frame,
+            textvariable=self.whisper_sample_rate_var,
+            values=[8000, 16000, 22050, 44100, 48000],
+            state="readonly",
+            width=15
+        )
+        sample_rate_combo.grid(row=13, column=1, sticky=tk.W, pady=5)
+
+        # Chunk Size
+        ttk.Label(self.whisper_frame, text="Chunk Size:", font=("Arial", 9)).grid(row=14, column=0, sticky=tk.W, pady=5)
+        self.whisper_chunk_size_var = tk.IntVar(value=480)
+        chunk_size_combo = ttk.Combobox(
+            self.whisper_frame,
+            textvariable=self.whisper_chunk_size_var,
+            values=[160, 320, 480, 960],
+            state="readonly",
+            width=15
+        )
+        chunk_size_combo.grid(row=14, column=1, sticky=tk.W, pady=5)
+
+        # Channels
+        ttk.Label(self.whisper_frame, text="Channels:", font=("Arial", 9)).grid(row=15, column=0, sticky=tk.W, pady=5)
+        self.whisper_channels_var = tk.IntVar(value=1)
+        channels_combo = ttk.Combobox(
+            self.whisper_frame,
+            textvariable=self.whisper_channels_var,
+            values=[1, 2],
+            state="readonly",
+            width=15
+        )
+        channels_combo.grid(row=15, column=1, sticky=tk.W, pady=5)
+
+        # VAD Aggressiveness
+        ttk.Label(self.whisper_frame, text="VAD Aggressiveness:", font=("Arial", 9)).grid(row=16, column=0, sticky=tk.W, pady=5)
+        self.whisper_vad_aggressiveness_var = tk.IntVar(value=2)
+        vad_combo = ttk.Combobox(
+            self.whisper_frame,
+            textvariable=self.whisper_vad_aggressiveness_var,
+            values=[0, 1, 2, 3],
+            state="readonly",
+            width=15
+        )
+        vad_combo.grid(row=16, column=1, sticky=tk.W, pady=5)
+
+    def _reset_whisper_advanced_settings(self):
+        """Reset Whisper advanced settings to default values"""
+        from src.core.logging_controller import info
+
+        # Default values
+        self.whisper_device_var.set("cuda")
+        self.whisper_compute_type_var.set("float16")
+        self.whisper_device_index_var.set("Default")  # Use "Default" instead of ""
+        self.whisper_silence_var.set(0.5)
+        self.whisper_energy_var.set(0.008)
+        self.whisper_min_audio_var.set(0.3)
+        self.whisper_sample_rate_var.set(16000)
+        self.whisper_chunk_size_var.set(480)
+        self.whisper_channels_var.set(1)
+        self.whisper_vad_aggressiveness_var.set(2)
+
+        info("Whisper advanced settings reset to defaults")
 
     def _create_voice_commands_section(self, parent):
         """Create voice commands configuration section"""
@@ -817,71 +1029,94 @@ class MainWindow:
         save_btn.grid(row=0, column=1, padx=5)
 
     def _create_status_frame(self, parent):
-        """Create status display frame"""
+        """Create status display frame with STOP button on the right"""
         status_frame = ttk.LabelFrame(parent, text="Status", padding="15")
         status_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 15))
         status_frame.columnconfigure(1, weight=1)
 
+        # Left side: Status info
+        info_frame = ttk.Frame(status_frame)
+        info_frame.grid(row=0, column=0, sticky=(tk.W, tk.N))
+
         # Status indicator
-        ttk.Label(status_frame, text="Estado:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
-        self.status_label = ttk.Label(status_frame, text="Detenido", font=("Arial", 10, "bold"))
+        ttk.Label(info_frame, text="Estado:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        self.status_label = ttk.Label(info_frame, text="Detenido", font=("Arial", 10, "bold"))
         self.status_label.grid(row=0, column=1, sticky=tk.W)
 
         # Current model
-        ttk.Label(status_frame, text="Modelo:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
-        self.model_label = ttk.Label(status_frame, text="Ninguno")
+        ttk.Label(info_frame, text="Modelo:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.model_label = ttk.Label(info_frame, text="Ninguno")
         self.model_label.grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
 
         # Language
-        ttk.Label(status_frame, text="Idioma:").grid(row=2, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
-        self.language_label = ttk.Label(status_frame, text="Ninguno")
+        ttk.Label(info_frame, text="Idioma:").grid(row=2, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.language_label = ttk.Label(info_frame, text="Ninguno")
         self.language_label.grid(row=2, column=1, sticky=tk.W, pady=(5, 0))
 
         # Voice Commands status
-        ttk.Label(status_frame, text="Comandos Voz:").grid(row=3, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
-        self.voice_commands_label = ttk.Label(status_frame, text="Deshabilitado", foreground="gray")
+        ttk.Label(info_frame, text="Comandos Voz:").grid(row=3, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.voice_commands_label = ttk.Label(info_frame, text="Deshabilitado", foreground="gray")
         self.voice_commands_label.grid(row=3, column=1, sticky=tk.W, pady=(5, 0))
 
-    def _create_control_buttons(self, parent):
-        """Create control buttons"""
-        button_frame = ttk.Frame(parent)
-        button_frame.grid(row=2, column=0, pady=(0, 20))
+        # Right side: STOP button (initially hidden)
+        # Create a frame for the STOP button to control its size better
+        stop_frame = ttk.Frame(status_frame)
+        stop_frame.grid(row=0, column=1, sticky=tk.E, padx=(20, 0))
 
-        # Stop button
-        self.stop_btn = ttk.Button(
-            button_frame,
+        self.stop_btn = tk.Button(
+            stop_frame,
             text="⏹ STOP",
             command=self._on_stop_clicked,
-            width=15
+            font=("Arial", 14, "bold"),
+            bg="#ff4444",
+            fg="white",
+            activebackground="#cc0000",
+            activeforeground="white",
+            relief=tk.RAISED,
+            bd=3,
+            padx=20,
+            pady=15,
+            cursor="hand2"
         )
-        self.stop_btn.grid(row=0, column=0, padx=5)
+        self.stop_btn.pack()
+        stop_frame.grid_remove()  # Hide initially
+        self.stop_frame = stop_frame  # Store reference to frame
 
-        # Spanish button
-        self.spanish_btn = ttk.Button(
-            button_frame,
-            text="🇪🇸 Español",
-            command=lambda: self._on_language_clicked("spanish"),
-            width=15
-        )
-        self.spanish_btn.grid(row=0, column=1, padx=5)
+    def _create_language_buttons(self, parent):
+        """Create language selection buttons (only language buttons, no STOP/Settings)"""
+        # Store button frame reference for later recreation
+        self.button_frame = ttk.Frame(parent)
+        self.button_frame.grid(row=2, column=0, pady=(0, 20))
 
-        # English button
-        self.english_btn = ttk.Button(
-            button_frame,
-            text="🇬🇧 English",
-            command=lambda: self._on_language_clicked("english"),
-            width=15
-        )
-        self.english_btn.grid(row=0, column=2, padx=5)
+        # Dynamic language buttons based on current backend
+        # Get supported languages for the current backend
+        supported_languages = self.config.get_supported_languages(self.config.backend)
 
-        # Settings button
-        self.settings_btn = ttk.Button(
-            button_frame,
-            text="⚙ Settings",
-            command=self._on_settings_clicked,
-            width=15
-        )
-        self.settings_btn.grid(row=0, column=3, padx=5)
+        # Store language buttons in a dictionary for easy access
+        self.language_buttons = {}
+
+        # Create a button for each supported language
+        column_index = 0  # Start from column 0 (no STOP button here anymore)
+        for lang_key, lang_info in supported_languages.items():
+            # Get display info from language config
+            flag = lang_info.get('flag', '')
+            name = lang_info.get('name', lang_key.capitalize())
+
+            # Create button with flag emoji and language name
+            button_text = f"{flag} {name}" if flag else name
+
+            lang_btn = ttk.Button(
+                self.button_frame,
+                text=button_text,
+                command=lambda key=lang_key: self._on_language_clicked(key),
+                width=15
+            )
+            lang_btn.grid(row=0, column=column_index, padx=5)
+
+            # Store reference to button
+            self.language_buttons[lang_key] = lang_btn
+
+            column_index += 1
 
     def _create_progress_frame(self, parent):
         """Create download progress frame (hidden by default)"""
@@ -951,13 +1186,39 @@ class MainWindow:
         self.backend_var.set(backend)
 
         # Load Vosk settings
+        # Saved values could be sizes ("small"), model names ("vosk-model-es-0.42"), or paths
+        # Need to convert to display format ("small - Small Spanish model...")
         vosk_es = self.database.get_setting('vosk_model_es', '')
-        if vosk_es and vosk_es in self.vosk_spanish_combo['values']:
-            self.vosk_spanish_var.set(vosk_es)
+        if vosk_es:
+            # Normalize to size using backend logic
+            from src.backends.vosk_backend import VoskBackend
+            backend = VoskBackend(
+                nerd_dictation_dir=str(self.config.nerd_dictation_dir),
+                venv_python=str(self.config.nerd_dictation_dir / "venv" / "bin" / "python"),
+                models_dir=str(self.config.models_dir)
+            )
+            size = backend._normalize_model_size('es', vosk_es)
+            # Find matching display option
+            for display_name, mapped_size in self.vosk_spanish_size_map.items():
+                if mapped_size == size:
+                    self.vosk_spanish_var.set(display_name)
+                    break
 
         vosk_en = self.database.get_setting('vosk_model_en', '')
-        if vosk_en and vosk_en in self.vosk_english_combo['values']:
-            self.vosk_english_var.set(vosk_en)
+        if vosk_en:
+            # Normalize to size
+            from src.backends.vosk_backend import VoskBackend
+            backend = VoskBackend(
+                nerd_dictation_dir=str(self.config.nerd_dictation_dir),
+                venv_python=str(self.config.nerd_dictation_dir / "venv" / "bin" / "python"),
+                models_dir=str(self.config.models_dir)
+            )
+            size = backend._normalize_model_size('en', vosk_en)
+            # Find matching display option
+            for display_name, mapped_size in self.vosk_english_size_map.items():
+                if mapped_size == size:
+                    self.vosk_english_var.set(display_name)
+                    break
 
         # Load Whisper settings
         model_id = self.database.get_setting('whisper_model', self.config.whisper_model)
@@ -970,9 +1231,10 @@ class MainWindow:
         self.whisper_compute_type_var.set(
             self.database.get_setting('whisper_compute_type', self.config.whisper_compute_type)
         )
-        self.whisper_device_index_var.set(
-            self.database.get_setting('whisper_device_index', '')
-        )
+        # Load device index and convert to display format
+        device_index_db = self.database.get_setting('whisper_device_index', '')
+        device_display = self._device_index_to_display(device_index_db)
+        self.whisper_device_index_var.set(device_display)
 
         # Load numeric settings
         try:
@@ -998,6 +1260,35 @@ class MainWindow:
             )
         except ValueError:
             self.whisper_min_audio_var.set(0.3)
+
+        # Load new audio capture settings
+        try:
+            self.whisper_sample_rate_var.set(
+                int(self.database.get_setting('whisper_sample_rate', '16000'))
+            )
+        except ValueError:
+            self.whisper_sample_rate_var.set(16000)
+
+        try:
+            self.whisper_chunk_size_var.set(
+                int(self.database.get_setting('whisper_chunk_size', '480'))
+            )
+        except ValueError:
+            self.whisper_chunk_size_var.set(480)
+
+        try:
+            self.whisper_channels_var.set(
+                int(self.database.get_setting('whisper_channels', '1'))
+            )
+        except ValueError:
+            self.whisper_channels_var.set(1)
+
+        try:
+            self.whisper_vad_aggressiveness_var.set(
+                int(self.database.get_setting('whisper_vad_aggressiveness', '2'))
+            )
+        except ValueError:
+            self.whisper_vad_aggressiveness_var.set(2)
 
         # Load debug flag
         debug_str = self.database.get_setting('debug_enabled', 'false')
@@ -1078,17 +1369,7 @@ class MainWindow:
 
     def _validate_inputs(self):
         """Validate all input fields"""
-        # Validate device index
-        device_index = self.whisper_device_index_var.get().strip()
-        if device_index:
-            try:
-                int(device_index)
-            except ValueError:
-                messagebox.showerror(
-                    "Validation Error",
-                    "Device Index must be a number or empty for auto-detect"
-                )
-                return False
+        # Device index is now a combobox with valid values only, no validation needed
 
         # Validate numeric ranges
         silence = self.whisper_silence_var.get()
@@ -1154,10 +1435,15 @@ class MainWindow:
             self.database.save_setting('backend', self.backend_var.get())
 
             # Save Vosk settings
+            # Convert from display format back to size for storage
             if self.vosk_spanish_var.get():
-                self.database.save_setting('vosk_model_es', self.vosk_spanish_var.get())
+                display_value = self.vosk_spanish_var.get()
+                size = self.vosk_spanish_size_map.get(display_value, 'small')
+                self.database.save_setting('vosk_model_es', size)
             if self.vosk_english_var.get():
-                self.database.save_setting('vosk_model_en', self.vosk_english_var.get())
+                display_value = self.vosk_english_var.get()
+                size = self.vosk_english_size_map.get(display_value, 'small')
+                self.database.save_setting('vosk_model_en', size)
 
             # Save Whisper settings
             display_name = self.whisper_model_var.get()
@@ -1165,10 +1451,17 @@ class MainWindow:
             self.database.save_setting('whisper_model', model_id)
             self.database.save_setting('whisper_device', self.whisper_device_var.get())
             self.database.save_setting('whisper_compute_type', self.whisper_compute_type_var.get())
-            self.database.save_setting('whisper_device_index', self.whisper_device_index_var.get())
+            # Convert device display format to index before saving
+            device_display = self.whisper_device_index_var.get()
+            device_index = self._device_display_to_index(device_display)
+            self.database.save_setting('whisper_device_index', device_index)
             self.database.save_setting('whisper_silence_duration', str(self.whisper_silence_var.get()))
             self.database.save_setting('whisper_energy_threshold', str(self.whisper_energy_var.get()))
             self.database.save_setting('whisper_min_audio_length', str(self.whisper_min_audio_var.get()))
+            self.database.save_setting('whisper_sample_rate', str(self.whisper_sample_rate_var.get()))
+            self.database.save_setting('whisper_chunk_size', str(self.whisper_chunk_size_var.get()))
+            self.database.save_setting('whisper_channels', str(self.whisper_channels_var.get()))
+            self.database.save_setting('whisper_vad_aggressiveness', str(self.whisper_vad_aggressiveness_var.get()))
 
             # Save debug flag
             self.database.save_setting('debug_enabled', 'true' if self.debug_var.get() else 'false')
@@ -1323,8 +1616,8 @@ class MainWindow:
             self.show_download_progress(model_name)
 
             # Disable language buttons during loading
-            self.spanish_btn.config(state='disabled')
-            self.english_btn.config(state='disabled')
+            for lang_btn in self.language_buttons.values():
+                lang_btn.config(state='disabled')
 
             # Start Whisper in background thread
             def start_whisper():
@@ -1341,29 +1634,47 @@ class MainWindow:
             thread = threading.Thread(target=start_whisper, daemon=True)
             thread.start()
         else:
-            # Vosk backend - needs model path
-            last_model = self.database.get_last_used_model(language)
+            # Vosk backend - automatic model download
+            # Determine model size from database settings or use default
+            model_size_key = f"vosk_model_{lang_code}"
+            saved_model = self.database.get_setting(model_size_key)
 
-            if last_model:
-                info(f"Starting with last used model: {last_model['path']}")
-                success, message = self.controller.restart(lang_code, last_model["path"])
-                if not success:
-                    messagebox.showerror("Error", f"Failed to start Vosk:\n{message}")
+            # Default model sizes per language
+            default_sizes = {
+                'es': 'small',  # Spanish: start with small (40MB)
+                'en': 'small'   # English: start with small (40MB)
+            }
+
+            # Use saved model, fallback to default
+            if saved_model:
+                # Saved model could be a path, name, or size - backend will normalize it
+                model_size = saved_model
+                info(f"Using saved model setting: {model_size}")
             else:
-                # Find first available model for this language
-                models = self.config.get_available_models()
-                matching_models = [m for m in models if m["language"] == language]
+                model_size = default_sizes.get(lang_code, 'small')
+                info(f"No saved model, using default size: {model_size}")
 
-                if matching_models:
-                    info(f"Starting with first matching model: {matching_models[0]['path']}")
-                    success, message = self.controller.restart(lang_code, matching_models[0]["path"])
-                    if not success:
-                        messagebox.showerror("Error", f"Failed to start Vosk:\n{message}")
+            # Show progress bar for Vosk (in case model needs to download)
+            self.show_download_progress(f"vosk-{lang_code}-{model_size}")
+
+            # Disable language buttons during loading
+            for lang_btn in self.language_buttons.values():
+                lang_btn.config(state='disabled')
+
+            # Start Vosk in background thread (like Whisper)
+            def start_vosk():
+                info(f"Starting Vosk backend with language '{lang_code}', model size '{model_size}'")
+                success, message = self.controller.start(lang_code, model_size)
+                info(f"Start result: success={success}, message={message}")
+
+                # Schedule UI update in main thread
+                if not success:
+                    self.root.after(0, lambda: self._on_vosk_error(message))
                 else:
-                    warning(f"No models found for language: {language}")
-                    messagebox.showwarning("No Models", f"No Vosk models found for {language}")
+                    self.root.after(0, self._on_vosk_started)
 
-            self._update_status()
+            thread = threading.Thread(target=start_vosk, daemon=True)
+            thread.start()
 
     def _on_whisper_started(self):
         """Called after Whisper backend starts (in main thread)"""
@@ -1371,8 +1682,8 @@ class MainWindow:
         self.hide_download_progress()
 
         # Re-enable language buttons
-        self.spanish_btn.config(state='normal')
-        self.english_btn.config(state='normal')
+        for lang_btn in self.language_buttons.values():
+            lang_btn.config(state='normal')
 
         # Update status
         self._update_status()
@@ -1383,8 +1694,36 @@ class MainWindow:
         self.hide_download_progress()
 
         # Re-enable language buttons
-        self.spanish_btn.config(state='normal')
-        self.english_btn.config(state='normal')
+        for lang_btn in self.language_buttons.values():
+            lang_btn.config(state='normal')
+
+    def _on_vosk_started(self):
+        """Called after Vosk backend starts (in main thread)"""
+        # Hide progress bar
+        self.hide_download_progress()
+
+        # Re-enable language buttons
+        for lang_btn in self.language_buttons.values():
+            lang_btn.config(state='normal')
+
+        # Update status
+        self._update_status()
+
+    def _on_vosk_error(self, error_message):
+        """Called when Vosk backend fails to start (in main thread)"""
+        # Hide progress bar
+        self.hide_download_progress()
+
+        # Re-enable language buttons
+        for lang_btn in self.language_buttons.values():
+            lang_btn.config(state='normal')
+
+        # Show error message
+        from tkinter import messagebox
+        messagebox.showerror("Error", f"Failed to start Vosk:\n{error_message}")
+
+        # Update status
+        self._update_status()
 
         # Show error dialog
         messagebox.showerror(
@@ -1420,12 +1759,56 @@ class MainWindow:
         # Set geometry with position
         self.root.geometry(f"{width}x{height}+{x}+{y}")
 
+    def _recreate_language_buttons(self):
+        """Recreate language buttons based on current backend"""
+        from src.core.logging_controller import info, debug
+
+        # Destroy existing language buttons
+        for lang_btn in self.language_buttons.values():
+            lang_btn.destroy()
+
+        # Clear dictionary
+        self.language_buttons.clear()
+
+        # Get supported languages for current backend
+        supported_languages = self.config.get_supported_languages(self.config.backend)
+
+        debug(f"Recreating language buttons for backend '{self.config.backend}': {list(supported_languages.keys())}")
+
+        # Create a button for each supported language
+        column_index = 0  # Start from column 0 (no STOP button here anymore)
+        for lang_key, lang_info in supported_languages.items():
+            # Get display info from language config
+            flag = lang_info.get('flag', '')
+            name = lang_info.get('name', lang_key.capitalize())
+
+            # Create button with flag emoji and language name
+            button_text = f"{flag} {name}" if flag else name
+
+            lang_btn = ttk.Button(
+                self.button_frame,
+                text=button_text,
+                command=lambda key=lang_key: self._on_language_clicked(key),
+                width=15
+            )
+            lang_btn.grid(row=0, column=column_index, padx=5)
+
+            # Store reference to button
+            self.language_buttons[lang_key] = lang_btn
+
+            column_index += 1
+
+        info(f"Recreated {len(self.language_buttons)} language buttons for backend: {self.config.backend}")
+
     def _update_ui_from_config(self):
         """Update UI elements based on current config values"""
         from src.core.logging_controller import info, debug, warning, error, critical
 
         # Log current backend
         info(f"Updating UI with backend: {self.config.backend}")
+
+        # Recreate language buttons for current backend
+        self._recreate_language_buttons()
 
         # Update window title
         backend_text = f" [{self.config.backend.upper()}]"
@@ -1452,6 +1835,9 @@ class MainWindow:
             lang_code = status["language"]
             lang_name = self.config.get_language_name(lang_code)
             self.language_label.config(text=lang_name)
+
+            # Show STOP button when running
+            self.stop_frame.grid()
         else:
             self.status_label.config(text="🔴 Detenido", foreground="red")
             # Show backend info when not running
@@ -1461,6 +1847,9 @@ class MainWindow:
             else:
                 self.model_label.config(text=f"{self.config.backend.upper()}")
             self.language_label.config(text="Ninguno")
+
+            # Hide STOP button when not running
+            self.stop_frame.grid_remove()
 
         # Update voice commands status
         try:

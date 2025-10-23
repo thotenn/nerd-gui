@@ -1,0 +1,83 @@
+{
+  "vosk": {
+    "en": {
+      "small": {
+        "name": "vosk-model-small-en-us-0.15",
+        "url": "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip",
+        "size": "40MB",
+        "description": "Small English model (~90% accuracy, fast)"
+      },
+      "medium": {
+        "name": "vosk-model-en-us-0.22-lgraph",
+        "url": "https://alphacephei.com/vosk/models/vosk-model-en-us-0.22-lgraph.zip",
+        "size": "128MB",
+        "description": "Medium English model with language model graph"
+      },
+      "gigaspeech": {
+        "name": "vosk-model-en-us-0.42-gigaspeech",
+        "url": "https://alphacephei.com/vosk/models/vosk-model-en-us-0.42-gigaspeech.zip",
+        "size": "2.3GB",
+        "description": "GigaSpeech English model (high accuracy)"
+      }
+    },
+    "es": {
+      "small": {
+        "name": "vosk-model-small-es-0.42",
+        "url": "https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip",
+        "size": "40MB",
+        "description": "Small Spanish model (~90% accuracy, fast)"
+      },
+      "large": {
+        "name": "vosk-model-es-0.42",
+        "url": "https://alphacephei.com/vosk/models/vosk-model-es-0.42.zip",
+        "size": "1.5GB",
+        "description": "Large Spanish model (~95% accuracy, slower)"
+      }
+    }
+  },
+  "whisper": {
+    "multilingual": {
+      "tiny": {
+        "name": "Systran/faster-whisper-tiny",
+        "size": "~75MB",
+        "description": "Tiny multilingual model (fastest, lowest accuracy)"
+      },
+      "base": {
+        "name": "Systran/faster-whisper-base",
+        "size": "~145MB",
+        "description": "Base multilingual model (fast, good accuracy)"
+      },
+      "small": {
+        "name": "Systran/faster-whisper-small",
+        "size": "~466MB",
+        "description": "Small multilingual model (balanced speed/accuracy)"
+      },
+      "medium": {
+        "name": "Systran/faster-whisper-medium",
+        "size": "~1.5GB",
+        "description": "Medium multilingual model (slower, high accuracy)"
+      },
+      "large-v3": {
+        "name": "Systran/faster-whisper-large-v3",
+        "size": "~3GB",
+        "description": "Large multilingual model v3 (slowest, highest accuracy)"
+      }
+    }
+  },
+  "languages": {
+    "en": {
+      "name": "English",
+      "code": "en",
+      "flag": "🇺🇸",
+      "vosk_supported": true,
+      "whisper_supported": true
+    },
+    "es": {
+      "name": "Spanish",
+      "code": "es",
+      "flag": "🇪🇸",
+      "vosk_supported": true,
+      "whisper_supported": true
+    }
+  }
+}

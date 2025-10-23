@@ -23,6 +23,14 @@ env/
 ENV/
 temp/
 
+# nerd-dictation virtual environment and build artifacts (integrated copy in apps/)
+apps/nerd-dictation/venv/
+apps/nerd-dictation/__pycache__/
+apps/nerd-dictation/*.pyc
+apps/nerd-dictation/build/
+apps/nerd-dictation/*.egg-info/
+apps/nerd-dictation/dist/
+
 # IDE
 .vscode/
 .idea/

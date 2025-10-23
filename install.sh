@@ -14,14 +14,24 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Directories
-INSTALL_DIR="$HOME/app_folder"
-NERD_DICTATION_DIR="$INSTALL_DIR/nerd-dictation"
-MODELS_DIR="$HOME/.config/nerd-dictation"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+NERD_DICTATION_DIR="$PROJECT_DIR/apps/nerd-dictation"  # Use integrated copy
+MODELS_DIR="$HOME/.config/nerd-dictation"
 
 # Installation flags
 INSTALL_VOSK=false
 INSTALL_WHISPER=false
+ALLOW_ROOT=false
+
+# Parse command line arguments
+for arg in "$@"; do
+    case $arg in
+        --allow-root)
+            ALLOW_ROOT=true
+            shift
+            ;;
+    esac
+done
 
 # Functions
 print_status() {
@@ -67,9 +77,15 @@ check_ubuntu() {
 # Check if running as root
 check_not_root() {
     if [[ $EUID -eq 0 ]]; then
-        print_error "This script should not be run as root for security reasons."
-        print_error "Please run as a regular user with sudo privileges."
-        exit 1
+        if [ "$ALLOW_ROOT" = true ]; then
+            print_warning "Running as root (--allow-root flag detected)"
+            print_warning "This is not recommended outside of containers/testing environments"
+        else
+            print_error "This script should not be run as root for security reasons."
+            print_error "Please run as a regular user with sudo privileges."
+            print_error "For containers/testing, use: ./install.sh --allow-root"
+            exit 1
+        fi
     fi
 }
 
@@ -120,10 +136,16 @@ choose_backends() {
 install_common_dependencies() {
     print_status "Installing common system dependencies..."
 
-    sudo apt update
+    # Use sudo only if not running as root
+    SUDO_CMD=""
+    if [[ $EUID -ne 0 ]]; then
+        SUDO_CMD="sudo"
+    fi
+
+    $SUDO_CMD apt update
 
     # Common packages
-    sudo apt install -y \
+    $SUDO_CMD apt install -y \
         python3-pip \
         python3-venv \
         python3-tk \
@@ -152,90 +174,64 @@ install_common_dependencies() {
 install_vosk_backend() {
     print_header "Installing Vosk Backend (nerd-dictation)"
 
-    # Create installation directory
-    mkdir -p "$INSTALL_DIR"
-    cd "$INSTALL_DIR"
+    # Check if integrated nerd-dictation exists, clone if not
+    if [ ! -d "$NERD_DICTATION_DIR" ]; then
+        print_warning "Integrated nerd-dictation not found at $NERD_DICTATION_DIR"
+        print_status "Cloning nerd-dictation from GitHub..."
 
-    # Clone repository if not exists
-    if [ -d "$NERD_DICTATION_DIR" ]; then
-        print_warning "nerd-dictation directory already exists"
-        cd "$NERD_DICTATION_DIR"
-        print_status "Updating nerd-dictation..."
-        git pull
-    else
-        print_status "Cloning nerd-dictation repository..."
+        # Create apps directory if it doesn't exist
+        mkdir -p "$PROJECT_DIR/apps"
+
+        # Clone nerd-dictation
+        cd "$PROJECT_DIR/apps"
         git clone https://github.com/ideasman42/nerd-dictation.git
-        cd "$NERD_DICTATION_DIR"
+
+        if [ ! -d "$NERD_DICTATION_DIR" ]; then
+            print_error "Failed to clone nerd-dictation"
+            exit 1
+        fi
+
+        print_success "nerd-dictation cloned successfully"
+    else
+        print_status "Using integrated nerd-dictation at: $NERD_DICTATION_DIR"
     fi
 
+    cd "$NERD_DICTATION_DIR"
+
+    # Note: nerd-dictation is now integrated into this repository
+    # Updates will come through the main repository, not as a separate git submodule
+    print_success "nerd-dictation ready for installation"
+
     # Create virtual environment for nerd-dictation
-    print_status "Creating virtual environment for nerd-dictation..."
-    python3 -m venv venv
+    if [ -d "venv" ]; then
+        print_status "Virtual environment already exists"
+    else
+        print_status "Creating virtual environment for nerd-dictation..."
+        python3 -m venv venv
+    fi
 
     # Install dependencies
     print_status "Installing Python dependencies..."
     source venv/bin/activate
     pip install --upgrade pip
-    pip install vosk sounddevice
+
+    # Install from requirements.txt if available, otherwise use manual installation
+    if [ -f "requirements.txt" ]; then
+        print_status "Installing from requirements.txt..."
+        pip install -r requirements.txt
+    else
+        print_warning "requirements.txt not found, installing manually..."
+        pip install vosk sounddevice
+    fi
+
     pip install .
     deactivate
 
-    print_success "nerd-dictation installed"
+    print_success "nerd-dictation configured"
 }
 
-download_vosk_models() {
-    print_status "Downloading Vosk models..."
-
-    mkdir -p "$MODELS_DIR"
-    cd "$MODELS_DIR"
-
-    # Spanish model (small - ~40MB)
-    if [ ! -d "vosk-model-small-es-0.42" ]; then
-        print_status "Downloading Spanish model (small - ~40MB)..."
-        wget -q --show-progress https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip
-        unzip -q vosk-model-small-es-0.42.zip
-        rm vosk-model-small-es-0.42.zip
-        print_success "Spanish model downloaded"
-    else
-        print_success "Spanish model already exists"
-    fi
-
-    # English model (small - ~40MB)
-    if [ ! -d "vosk-model-small-en-us-0.15" ]; then
-        print_status "Downloading English model (small - ~40MB)..."
-        wget -q --show-progress https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
-        unzip -q vosk-model-small-en-us-0.15.zip
-        rm vosk-model-small-en-us-0.15.zip
-        print_success "English model downloaded"
-    else
-        print_success "English model already exists"
-    fi
-
-    # Optional: Large models
-    echo ""
-    print_status "Download large models for better accuracy? (~1.5GB each) (y/N)"
-    read -r response
-
-    if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
-        cd "$MODELS_DIR"
-
-        if [ ! -d "vosk-model-es-0.42" ]; then
-            print_status "Downloading Spanish large model (1.5GB)..."
-            wget -q --show-progress https://alphacephei.com/vosk/models/vosk-model-es-0.42.zip
-            unzip -q vosk-model-es-0.42.zip
-            rm vosk-model-es-0.42.zip
-            print_success "Spanish large model downloaded"
-        fi
-
-        if [ ! -d "vosk-model-en-us-0.22" ]; then
-            print_status "Downloading English large model (1.8GB)..."
-            wget -q --show-progress https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip
-            unzip -q vosk-model-en-us-0.22.zip
-            rm vosk-model-en-us-0.22.zip
-            print_success "English large model downloaded"
-        fi
-    fi
-}
+# Vosk models are now downloaded automatically on first use
+# No need to download during installation
 
 # ============================================================================
 # WHISPER BACKEND INSTALLATION
@@ -276,20 +272,21 @@ install_whisper_backend() {
     source venv/bin/activate
     pip install --upgrade pip
 
-    # Core dependencies
-    print_status "Installing faster-whisper..."
-    pip install faster-whisper pyaudio numpy soundfile
+    # Install from requirements.txt
+    if [ -f "requirements.txt" ]; then
+        print_status "Installing from requirements.txt..."
+        pip install -r requirements.txt
 
-    # Install cuDNN for GPU support
-    if [ "$HAS_GPU" = true ]; then
-        print_status "Installing NVIDIA cuDNN for GPU acceleration..."
-        pip install nvidia-cudnn-cu12
-        print_success "cuDNN installed"
+        # Install cuDNN for GPU support
+        if [ "$HAS_GPU" = true ]; then
+            print_status "Installing NVIDIA cuDNN for GPU acceleration..."
+            pip install nvidia-cudnn-cu12 || print_warning "cuDNN installation failed (optional)"
+            print_success "cuDNN installed"
+        fi
+    else
+        print_error "requirements.txt not found in project root!"
+        exit 1
     fi
-
-    # Optional: WebRTC VAD
-    print_status "Installing Voice Activity Detection..."
-    pip install webrtcvad || print_warning "webrtcvad installation failed (optional)"
 
     # Test installation
     print_status "Testing Whisper installation..."
@@ -352,13 +349,8 @@ configure_environment() {
 
     # Configure based on what was installed
     if [ "$INSTALL_VOSK" = true ]; then
-        # Update nerd-dictation paths
-        if grep -q "^NERD_DICTATION_DIR=" "$ENV_FILE"; then
-            sed -i "s|^NERD_DICTATION_DIR=.*|NERD_DICTATION_DIR=$NERD_DICTATION_DIR|" "$ENV_FILE"
-        else
-            echo "NERD_DICTATION_DIR=$NERD_DICTATION_DIR" >> "$ENV_FILE"
-        fi
-
+        # Note: NERD_DICTATION_DIR is optional now (defaults to apps/nerd-dictation)
+        # Only set MODELS_DIR
         if grep -q "^MODELS_DIR=" "$ENV_FILE"; then
             sed -i "s|^MODELS_DIR=.*|MODELS_DIR=$MODELS_DIR|" "$ENV_FILE"
         else
@@ -420,6 +412,57 @@ alias dictado-stop='cd $NERD_DICTATION_DIR && ./nerd-dictation end'
 EOF
 
     print_success "Aliases added to .bashrc"
+}
+
+# ============================================================================
+# DESKTOP FILE CREATION
+# ============================================================================
+
+create_desktop_file() {
+    print_header "Creating Desktop Entry"
+
+    DESKTOP_FILE="$PROJECT_DIR/data/dictation.desktop"
+    DESKTOP_INSTALL_DIR="$HOME/.local/share/applications"
+
+    # Ensure data directory exists
+    mkdir -p "$PROJECT_DIR/data"
+
+    print_status "Generating dictation.desktop file..."
+
+    # Create .desktop file
+    cat > "$DESKTOP_FILE" << EOF
+[Desktop Entry]
+Type=Application
+Name=Dictation Manager
+Comment=Voice dictation with Vosk and Whisper backends
+Exec=$PROJECT_DIR/run.sh
+Icon=$PROJECT_DIR/assets/logo.png
+Terminal=false
+Categories=Utility;AudioVideo;Accessibility;
+Keywords=dictation;voice;speech;transcription;whisper;vosk;
+StartupNotify=true
+EOF
+
+    print_success "Desktop file created at: $DESKTOP_FILE"
+
+    # Install to user applications directory
+    print_status "Installing to applications menu..."
+
+    mkdir -p "$DESKTOP_INSTALL_DIR"
+    cp "$DESKTOP_FILE" "$DESKTOP_INSTALL_DIR/dictation-manager.desktop"
+
+    # Make it executable
+    chmod +x "$DESKTOP_INSTALL_DIR/dictation-manager.desktop"
+
+    print_success "Desktop entry installed to: $DESKTOP_INSTALL_DIR"
+
+    # Update desktop database if possible
+    if command -v update-desktop-database &> /dev/null; then
+        update-desktop-database "$DESKTOP_INSTALL_DIR" 2>/dev/null || true
+        print_success "Desktop database updated"
+    fi
+
+    print_status "Dictation Manager should now appear in your applications menu"
 }
 
 # ============================================================================
@@ -490,7 +533,10 @@ print_usage() {
     echo ""
     echo -e "${BLUE}Running the Application:${NC}"
     echo ""
-    echo -e "  ${YELLOW}Using run.sh (Recommended):${NC}"
+    echo -e "  ${YELLOW}From Applications Menu (Easiest):${NC}"
+    echo -e "    Search for '${GREEN}Dictation Manager${NC}' in your app launcher"
+    echo ""
+    echo -e "  ${YELLOW}From Terminal:${NC}"
     echo -e "    cd $PROJECT_DIR"
     echo -e "    ./run.sh"
     echo ""
@@ -569,7 +615,7 @@ main() {
 
     if [ "$INSTALL_VOSK" = true ]; then
         install_vosk_backend
-        download_vosk_models
+        print_status "Vosk models will download automatically when you first use each language"
     fi
 
     if [ "$INSTALL_WHISPER" = true ]; then
@@ -581,6 +627,8 @@ main() {
     if [ "$INSTALL_VOSK" = true ]; then
         create_bash_aliases
     fi
+
+    create_desktop_file
 
     test_installation
     print_usage
