@@ -99,14 +99,24 @@ class DictationController:
                 energy_threshold = getattr(self.config, 'whisper_energy_threshold', 0.002)
                 min_audio_length = getattr(self.config, 'whisper_min_audio_length', 0.3)
 
+                # Audio capture configuration
+                sample_rate = getattr(self.config, 'whisper_sample_rate', 16000)
+                chunk_size = getattr(self.config, 'whisper_chunk_size', 480)
+                channels = getattr(self.config, 'whisper_channels', 1)
+                vad_aggressiveness = getattr(self.config, 'whisper_vad_aggressiveness', 2)
+
                 self.backends['whisper'] = WhisperBackend(
                     model_size=whisper_model,
                     device=whisper_device,
                     compute_type=whisper_compute_type,
+                    sample_rate=sample_rate,
                     device_index=device_index,
                     silence_duration=silence_duration,
                     energy_threshold=energy_threshold,
                     min_audio_length=min_audio_length,
+                    chunk_size=chunk_size,
+                    channels=channels,
+                    vad_aggressiveness=vad_aggressiveness,
                     database=self.database
                 )
                 info(f"Whisper backend initialized with model '{whisper_model}' on {whisper_device} "

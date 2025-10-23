@@ -417,12 +417,24 @@ class MainWindow:
 
     def _create_whisper_advanced_settings(self):
         """Create Whisper advanced parameters section"""
-        # Advanced settings label
+        # Advanced settings header with Reset button
+        header_frame = ttk.Frame(self.whisper_frame)
+        header_frame.grid(row=5, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
+
         ttk.Label(
-            self.whisper_frame,
+            header_frame,
             text="Advanced Settings",
             font=("Arial", 11, "bold")
-        ).grid(row=5, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
+        ).pack(side=tk.LEFT)
+
+        # Reset button
+        reset_btn = ttk.Button(
+            header_frame,
+            text="Reset",
+            command=self._reset_whisper_advanced_settings,
+            width=8
+        )
+        reset_btn.pack(side=tk.LEFT, padx=(10, 0))
 
         # Device selection
         ttk.Label(self.whisper_frame, text="Device:", font=("Arial", 9)).grid(row=6, column=0, sticky=tk.W, pady=5)
@@ -486,6 +498,72 @@ class MainWindow:
             width=16
         )
         min_audio_spinbox.grid(row=11, column=1, sticky=tk.W, pady=5)
+
+        # Sample Rate
+        ttk.Label(self.whisper_frame, text="Sample Rate:", font=("Arial", 9)).grid(row=12, column=0, sticky=tk.W, pady=5)
+        self.whisper_sample_rate_var = tk.IntVar(value=16000)
+        sample_rate_combo = ttk.Combobox(
+            self.whisper_frame,
+            textvariable=self.whisper_sample_rate_var,
+            values=[8000, 16000, 22050, 44100, 48000],
+            state="readonly",
+            width=15
+        )
+        sample_rate_combo.grid(row=12, column=1, sticky=tk.W, pady=5)
+
+        # Chunk Size
+        ttk.Label(self.whisper_frame, text="Chunk Size:", font=("Arial", 9)).grid(row=13, column=0, sticky=tk.W, pady=5)
+        self.whisper_chunk_size_var = tk.IntVar(value=480)
+        chunk_size_combo = ttk.Combobox(
+            self.whisper_frame,
+            textvariable=self.whisper_chunk_size_var,
+            values=[160, 320, 480, 960],
+            state="readonly",
+            width=15
+        )
+        chunk_size_combo.grid(row=13, column=1, sticky=tk.W, pady=5)
+
+        # Channels
+        ttk.Label(self.whisper_frame, text="Channels:", font=("Arial", 9)).grid(row=14, column=0, sticky=tk.W, pady=5)
+        self.whisper_channels_var = tk.IntVar(value=1)
+        channels_combo = ttk.Combobox(
+            self.whisper_frame,
+            textvariable=self.whisper_channels_var,
+            values=[1, 2],
+            state="readonly",
+            width=15
+        )
+        channels_combo.grid(row=14, column=1, sticky=tk.W, pady=5)
+
+        # VAD Aggressiveness
+        ttk.Label(self.whisper_frame, text="VAD Aggressiveness:", font=("Arial", 9)).grid(row=15, column=0, sticky=tk.W, pady=5)
+        self.whisper_vad_aggressiveness_var = tk.IntVar(value=2)
+        vad_combo = ttk.Combobox(
+            self.whisper_frame,
+            textvariable=self.whisper_vad_aggressiveness_var,
+            values=[0, 1, 2, 3],
+            state="readonly",
+            width=15
+        )
+        vad_combo.grid(row=15, column=1, sticky=tk.W, pady=5)
+
+    def _reset_whisper_advanced_settings(self):
+        """Reset Whisper advanced settings to default values"""
+        from src.core.logging_controller import info
+
+        # Default values
+        self.whisper_device_var.set("cuda")
+        self.whisper_compute_type_var.set("float16")
+        self.whisper_device_index_var.set("")
+        self.whisper_silence_var.set(0.5)
+        self.whisper_energy_var.set(0.008)
+        self.whisper_min_audio_var.set(0.3)
+        self.whisper_sample_rate_var.set(16000)
+        self.whisper_chunk_size_var.set(480)
+        self.whisper_channels_var.set(1)
+        self.whisper_vad_aggressiveness_var.set(2)
+
+        info("Whisper advanced settings reset to defaults")
 
     def _create_voice_commands_section(self, parent):
         """Create voice commands configuration section"""
@@ -1089,6 +1167,35 @@ class MainWindow:
         except ValueError:
             self.whisper_min_audio_var.set(0.3)
 
+        # Load new audio capture settings
+        try:
+            self.whisper_sample_rate_var.set(
+                int(self.database.get_setting('whisper_sample_rate', '16000'))
+            )
+        except ValueError:
+            self.whisper_sample_rate_var.set(16000)
+
+        try:
+            self.whisper_chunk_size_var.set(
+                int(self.database.get_setting('whisper_chunk_size', '480'))
+            )
+        except ValueError:
+            self.whisper_chunk_size_var.set(480)
+
+        try:
+            self.whisper_channels_var.set(
+                int(self.database.get_setting('whisper_channels', '1'))
+            )
+        except ValueError:
+            self.whisper_channels_var.set(1)
+
+        try:
+            self.whisper_vad_aggressiveness_var.set(
+                int(self.database.get_setting('whisper_vad_aggressiveness', '2'))
+            )
+        except ValueError:
+            self.whisper_vad_aggressiveness_var.set(2)
+
         # Load debug flag
         debug_str = self.database.get_setting('debug_enabled', 'false')
         self.debug_var.set(debug_str.lower() in ('true', '1', 'yes'))
@@ -1264,6 +1371,10 @@ class MainWindow:
             self.database.save_setting('whisper_silence_duration', str(self.whisper_silence_var.get()))
             self.database.save_setting('whisper_energy_threshold', str(self.whisper_energy_var.get()))
             self.database.save_setting('whisper_min_audio_length', str(self.whisper_min_audio_var.get()))
+            self.database.save_setting('whisper_sample_rate', str(self.whisper_sample_rate_var.get()))
+            self.database.save_setting('whisper_chunk_size', str(self.whisper_chunk_size_var.get()))
+            self.database.save_setting('whisper_channels', str(self.whisper_channels_var.get()))
+            self.database.save_setting('whisper_vad_aggressiveness', str(self.whisper_vad_aggressiveness_var.get()))
 
             # Save debug flag
             self.database.save_setting('debug_enabled', 'true' if self.debug_var.get() else 'false')

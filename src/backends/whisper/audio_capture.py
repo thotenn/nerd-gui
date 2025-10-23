@@ -145,7 +145,8 @@ class VoiceActivityDetector:
                  sample_rate: int = 16000,
                  frame_duration_ms: int = 30,
                  energy_threshold: float = 0.001,
-                 silence_duration: float = 1.0):
+                 silence_duration: float = 1.0,
+                 vad_aggressiveness: int = 2):
         """
         Initialize VAD.
 
@@ -154,11 +155,13 @@ class VoiceActivityDetector:
             frame_duration_ms: Duration of each frame in milliseconds
             energy_threshold: Minimum audio energy to consider as speech (lowered for better sensitivity)
             silence_duration: Seconds of silence before considering speech ended
+            vad_aggressiveness: WebRTC VAD aggressiveness level (0-3, default 2)
         """
         self.sample_rate = sample_rate
         self.frame_size = int(sample_rate * frame_duration_ms / 1000)
         self.energy_threshold = energy_threshold
         self.silence_frames = int(silence_duration * 1000 / frame_duration_ms)
+        self.vad_aggressiveness = vad_aggressiveness
 
         self.is_speaking = False
         self.silence_counter = 0
@@ -167,9 +170,9 @@ class VoiceActivityDetector:
         # Try to import webrtcvad, fallback to energy-based detection
         try:
             import webrtcvad
-            self.vad = webrtcvad.Vad(2)  # Aggressiveness level 2 (normal/balanced)
+            self.vad = webrtcvad.Vad(self.vad_aggressiveness)
             self.use_webrtcvad = True
-            info("Using WebRTC VAD")
+            info(f"Using WebRTC VAD with aggressiveness level {self.vad_aggressiveness}")
         except ImportError:
             self.vad = None
             self.use_webrtcvad = False
@@ -276,6 +279,9 @@ class AudioCapture:
                  sample_rate: int = 16000,
                  device_index: Optional[int] = None,
                  min_audio_length: float = 0.3,
+                 chunk_size: int = 480,
+                 channels: int = 1,
+                 vad_aggressiveness: int = 2,
                  **kwargs):
         """
         Initialize audio capture.
@@ -285,14 +291,26 @@ class AudioCapture:
             sample_rate: Audio sample rate
             device_index: Specific audio device index (None for default)
             min_audio_length: Minimum audio length in seconds to process
+            chunk_size: Audio chunk size for VAD (must be 160, 320, 480, or 960)
+            channels: Number of audio channels (1 for mono, 2 for stereo)
+            vad_aggressiveness: WebRTC VAD aggressiveness level (0-3)
             **kwargs: Additional arguments for VAD
         """
         self.on_audio_chunk = on_audio_chunk
         self.sample_rate = sample_rate
         self.min_audio_length = min_audio_length
 
-        self.mic_stream = MicrophoneStream(sample_rate=sample_rate, device_index=device_index)
-        self.vad = VoiceActivityDetector(sample_rate=sample_rate, **kwargs)
+        self.mic_stream = MicrophoneStream(
+            sample_rate=sample_rate,
+            device_index=device_index,
+            chunk_size=chunk_size,
+            channels=channels
+        )
+        self.vad = VoiceActivityDetector(
+            sample_rate=sample_rate,
+            vad_aggressiveness=vad_aggressiveness,
+            **kwargs
+        )
 
         self.is_running = False
         self.capture_thread: Optional[threading.Thread] = None

@@ -48,6 +48,10 @@ class Config:
         self.whisper_silence_duration = float(env_vars.get("WHISPER_SILENCE_DURATION", "1.0"))
         self.whisper_energy_threshold = float(env_vars.get("WHISPER_ENERGY_THRESHOLD", "0.002"))
         self.whisper_min_audio_length = float(env_vars.get("WHISPER_MIN_AUDIO_LENGTH", "0.3"))
+        self.whisper_sample_rate = int(env_vars.get("WHISPER_SAMPLE_RATE", "16000"))
+        self.whisper_chunk_size = int(env_vars.get("WHISPER_CHUNK_SIZE", "480"))
+        self.whisper_channels = int(env_vars.get("WHISPER_CHANNELS", "1"))
+        self.whisper_vad_aggressiveness = int(env_vars.get("WHISPER_VAD_AGGRESSIVENESS", "2"))
 
         # Debug flag (will be loaded from database)
         self.debug_enabled = False
@@ -255,6 +259,35 @@ class Config:
             if min_audio_str:
                 try:
                     self.whisper_min_audio_length = float(min_audio_str)
+                except ValueError:
+                    pass  # Keep default
+
+            # Load audio capture parameters
+            sample_rate_str = self.database.get_setting('whisper_sample_rate')
+            if sample_rate_str:
+                try:
+                    self.whisper_sample_rate = int(sample_rate_str)
+                except ValueError:
+                    pass  # Keep default
+
+            chunk_size_str = self.database.get_setting('whisper_chunk_size')
+            if chunk_size_str:
+                try:
+                    self.whisper_chunk_size = int(chunk_size_str)
+                except ValueError:
+                    pass  # Keep default
+
+            channels_str = self.database.get_setting('whisper_channels')
+            if channels_str:
+                try:
+                    self.whisper_channels = int(channels_str)
+                except ValueError:
+                    pass  # Keep default
+
+            vad_aggressiveness_str = self.database.get_setting('whisper_vad_aggressiveness')
+            if vad_aggressiveness_str:
+                try:
+                    self.whisper_vad_aggressiveness = int(vad_aggressiveness_str)
                 except ValueError:
                     pass  # Keep default
 
