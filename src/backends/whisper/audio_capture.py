@@ -23,7 +23,7 @@ class MicrophoneStream:
 
     def __init__(self,
                  sample_rate: int = 16000,
-                 chunk_size: int = 1024,
+                 chunk_size: int = 480,
                  channels: int = 1,
                  format: int = pyaudio.paInt16,
                  device_index: Optional[int] = None):
@@ -32,7 +32,7 @@ class MicrophoneStream:
 
         Args:
             sample_rate: Audio sample rate (Whisper expects 16kHz)
-            chunk_size: Number of audio frames per buffer
+            chunk_size: Number of audio frames per buffer (480 = 30ms at 16kHz, required for WebRTC VAD)
             channels: Number of audio channels (1 for mono)
             format: Audio format (16-bit PCM)
             device_index: Specific audio device index (None for default)
@@ -167,7 +167,7 @@ class VoiceActivityDetector:
         # Try to import webrtcvad, fallback to energy-based detection
         try:
             import webrtcvad
-            self.vad = webrtcvad.Vad(3)  # Aggressiveness level 3 (highest)
+            self.vad = webrtcvad.Vad(2)  # Aggressiveness level 2 (normal/balanced)
             self.use_webrtcvad = True
             info("Using WebRTC VAD")
         except ImportError:
