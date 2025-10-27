@@ -13,6 +13,9 @@ torchaudio>=2.0.0
 # Core Whisper transcription
 faster-whisper>=0.10.0
 
+# HTTP requests (required by faster-whisper)
+requests>=2.32.0
+
 # Audio processing
 pyaudio>=0.2.13
 numpy>=1.24.0
