@@ -655,10 +655,83 @@ EOF
 }
 
 # ============================================================================
-# DESKTOP FILE CREATION
+# DESKTOP FILE CREATION (Linux/macOS)
 # ============================================================================
 
-create_desktop_file() {
+create_macos_app() {
+    print_header "Creating macOS Application"
+
+    APP_NAME="Dictation Manager.app"
+    APP_DIR="$HOME/Applications/$APP_NAME"
+
+    # Create app bundle structure
+    print_status "Creating .app bundle structure..."
+    mkdir -p "$APP_DIR/Contents/MacOS"
+    mkdir -p "$APP_DIR/Contents/Resources"
+
+    # Create Info.plist
+    print_status "Generating Info.plist..."
+    cat > "$APP_DIR/Contents/Info.plist" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>DictationManager</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.local.dictation-manager</string>
+    <key>CFBundleName</key>
+    <string>Dictation Manager</string>
+    <key>CFBundleDisplayName</key>
+    <string>Dictation Manager</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>LSMinimumSystemVersion</key>
+    <string>10.13</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Dictation Manager needs access to your microphone for voice recognition.</string>
+</dict>
+</plist>
+EOF
+
+    # Create launcher script
+    print_status "Creating launcher script..."
+    cat > "$APP_DIR/Contents/MacOS/DictationManager" << 'EOF'
+#!/bin/bash
+# Dictation Manager Launcher for macOS
+
+# Use AppleScript to open Terminal and run the application
+osascript << 'APPLESCRIPT'
+tell application "Terminal"
+    activate
+    do script "cd 'PROJECT_DIR_PLACEHOLDER' && ./run.sh"
+end tell
+APPLESCRIPT
+EOF
+
+    # Replace placeholder with actual project directory
+    sed "${SED_INPLACE[@]}" "s|PROJECT_DIR_PLACEHOLDER|$PROJECT_DIR|g" "$APP_DIR/Contents/MacOS/DictationManager"
+
+    # Make launcher executable
+    chmod +x "$APP_DIR/Contents/MacOS/DictationManager"
+
+    # Copy icon if exists
+    if [ -f "$PROJECT_DIR/assets/logo.png" ]; then
+        cp "$PROJECT_DIR/assets/logo.png" "$APP_DIR/Contents/Resources/icon.png"
+    fi
+
+    print_success "macOS app created at: $APP_DIR"
+    print_status "Dictation Manager should now appear in Launchpad and Spotlight"
+    print_warning "Note: You may need to log out and log back in for it to appear immediately"
+}
+
+create_linux_desktop_file() {
     print_header "Creating Desktop Entry"
 
     DESKTOP_FILE="$PROJECT_DIR/data/dictation.desktop"
@@ -703,6 +776,14 @@ EOF
     fi
 
     print_status "Dictation Manager should now appear in your applications menu"
+}
+
+create_desktop_file() {
+    if [ "$OS_TYPE" == "macos" ]; then
+        create_macos_app
+    else
+        create_linux_desktop_file
+    fi
 }
 
 # ============================================================================
