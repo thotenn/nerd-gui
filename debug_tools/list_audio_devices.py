@@ -34,11 +34,21 @@ def list_audio_devices():
         # Only show input devices
         if info['maxInputChannels'] > 0:
             input_devices.append((i, info))
+
+            # Convert bytes to string if needed (macOS compatibility)
+            device_name = info['name']
+            if isinstance(device_name, bytes):
+                device_name = device_name.decode('utf-8', errors='replace')
+
+            host_api_name = p.get_host_api_info_by_index(info['hostApi'])['name']
+            if isinstance(host_api_name, bytes):
+                host_api_name = host_api_name.decode('utf-8', errors='replace')
+
             print(f"Index: {i}")
-            print(f"  Name: {info['name']}")
+            print(f"  Name: {device_name}")
             print(f"  Input Channels: {info['maxInputChannels']}")
             print(f"  Sample Rate: {int(info['defaultSampleRate'])} Hz")
-            print(f"  Host API: {p.get_host_api_info_by_index(info['hostApi'])['name']}")
+            print(f"  Host API: {host_api_name}")
 
             # Check if it's the default
             try:

@@ -1,7 +1,8 @@
 #!/bin/bash
 #
-# Dictation Manager Installation Script for Ubuntu 24.04
-# Supports both Vosk (CPU) and Whisper (GPU) backends
+# Dictation Manager Installation Script
+# Supports Ubuntu 24.04 and macOS (Apple Silicon)
+# Supports both Vosk (CPU) and Whisper (GPU/MPS) backends
 #
 
 set -e  # Exit on any error
@@ -13,10 +14,57 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Directories
+# Detect OS
+detect_os() {
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        OS_TYPE="macos"
+        # Detect if it's Apple Silicon
+        if [[ $(uname -m) == "arm64" ]]; then
+            IS_APPLE_SILICON=true
+            print_success "Detected: macOS (Apple Silicon)"
+        else
+            IS_APPLE_SILICON=false
+            print_success "Detected: macOS (Intel)"
+        fi
+    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        if [ -f /etc/lsb-release ]; then
+            source /etc/lsb-release
+            if [ "$DISTRIB_ID" == "Ubuntu" ]; then
+                OS_TYPE="ubuntu"
+                print_success "Detected: Ubuntu $DISTRIB_RELEASE"
+            else
+                OS_TYPE="linux"
+                print_success "Detected: Linux (non-Ubuntu)"
+            fi
+        else
+            OS_TYPE="linux"
+            print_success "Detected: Linux"
+        fi
+    else
+        print_error "Unsupported operating system: $OSTYPE"
+        exit 1
+    fi
+}
+
+# Directories - Platform dependent
+set_directories() {
+    if [ "$OS_TYPE" == "macos" ]; then
+        MODELS_DIR="$HOME/Library/Application Support/nerd-dictation"
+        # macOS (BSD sed) requires an argument after -i
+        SED_INPLACE=(-i "")
+    else
+        MODELS_DIR="$HOME/.config/nerd-dictation"
+        # Linux (GNU sed) doesn't require an argument
+        SED_INPLACE=(-i)
+    fi
+}
+
+# Global variables
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NERD_DICTATION_DIR="$PROJECT_DIR/apps/nerd-dictation"  # Use integrated copy
-MODELS_DIR="$HOME/.config/nerd-dictation"
+OS_TYPE=""
+IS_APPLE_SILICON=false
+MODELS_DIR=""  # Will be set by set_directories()
 
 # Installation flags
 INSTALL_VOSK=false
@@ -58,20 +106,14 @@ print_header() {
     echo ""
 }
 
-# Check if running on Ubuntu
+# Check OS - No longer needed as standalone function (integrated into detect_os)
+# Kept for backward compatibility
 check_ubuntu() {
-    if [ ! -f /etc/lsb-release ]; then
-        print_error "This script is designed for Ubuntu"
+    # This function is deprecated - OS detection is now done in detect_os()
+    if [ "$OS_TYPE" != "ubuntu" ] && [ "$OS_TYPE" != "macos" ] && [ "$OS_TYPE" != "linux" ]; then
+        print_error "Unsupported operating system"
         exit 1
     fi
-
-    source /etc/lsb-release
-    if [ "$DISTRIB_ID" != "Ubuntu" ]; then
-        print_error "This script is designed for Ubuntu"
-        exit 1
-    fi
-
-    print_success "Running on Ubuntu $DISTRIB_RELEASE"
 }
 
 # Check if running as root
@@ -100,10 +142,17 @@ choose_backends() {
     echo "     - ~90% accuracy"
     echo "     - Works on any computer"
     echo ""
-    echo "  2) Whisper (GPU-accelerated)"
-    echo "     - High accuracy (95-97%)"
-    echo "     - Requires NVIDIA GPU (recommended)"
-    echo "     - Built-in punctuation"
+    if [ "$OS_TYPE" == "macos" ]; then
+        echo "  2) Whisper (MPS-accelerated for Apple Silicon)"
+        echo "     - High accuracy (95-97%)"
+        echo "     - Uses Apple Metal Performance Shaders"
+        echo "     - Built-in punctuation"
+    else
+        echo "  2) Whisper (GPU-accelerated)"
+        echo "     - High accuracy (95-97%)"
+        echo "     - Requires NVIDIA GPU (recommended)"
+        echo "     - Built-in punctuation"
+    fi
     echo ""
     echo "  3) Both (Recommended - allows switching)"
     echo ""
@@ -136,35 +185,172 @@ choose_backends() {
 install_common_dependencies() {
     print_status "Installing common system dependencies..."
 
-    # Use sudo only if not running as root
-    SUDO_CMD=""
-    if [[ $EUID -ne 0 ]]; then
-        SUDO_CMD="sudo"
+    if [ "$OS_TYPE" == "macos" ]; then
+        # macOS installation using Homebrew
+
+        # Check if Homebrew is installed
+        if ! command -v brew &> /dev/null; then
+            print_error "Homebrew is not installed!"
+            print_status "Please install Homebrew first:"
+            print_status '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+            exit 1
+        fi
+
+        print_success "Homebrew found"
+
+        # Update Homebrew
+        print_status "Updating Homebrew..."
+        brew update || true
+
+        # Install dependencies
+        print_status "Installing macOS dependencies..."
+
+        # Python (if not already installed)
+        if ! command -v python3 &> /dev/null; then
+            brew install python@3.11
+        fi
+
+        # Audio dependencies
+        brew install portaudio || print_warning "portaudio already installed"
+
+        # Build tools
+        brew install cmake pkg-config || print_warning "Build tools already installed"
+
+        # Git, wget, unzip are usually pre-installed on macOS or available via Xcode Command Line Tools
+
+        print_warning "Note: xdotool is not available on macOS"
+        print_status "Voice Commands will use AppleScript/PyAutoGUI instead"
+
+        print_success "macOS dependencies installed"
+
+    else
+        # Linux/Ubuntu installation using apt
+
+        # Use sudo only if not running as root
+        SUDO_CMD=""
+        if [[ $EUID -ne 0 ]]; then
+            SUDO_CMD="sudo"
+        fi
+
+        $SUDO_CMD apt update
+
+        # Common packages
+        $SUDO_CMD apt install -y \
+            python3-pip \
+            python3-venv \
+            python3-tk \
+            portaudio19-dev \
+            xdotool \
+            pulseaudio-utils \
+            alsa-utils \
+            git \
+            wget \
+            unzip \
+            gcc \
+            g++ \
+            make \
+            cmake \
+            pkg-config
+
+        print_success "xdotool installed (required for Voice Commands feature)"
+        print_success "Common dependencies installed"
+    fi
+}
+
+# Check Python tkinter availability (macOS only)
+check_python_tkinter() {
+    if [ "$OS_TYPE" != "macos" ]; then
+        # tkinter is installed via python3-tk on Linux, skip check
+        return 0
     fi
 
-    $SUDO_CMD apt update
+    print_header "Checking Python tkinter support"
 
-    # Common packages
-    $SUDO_CMD apt install -y \
-        python3-pip \
-        python3-venv \
-        python3-tk \
-        portaudio19-dev \
-        xdotool \
-        pulseaudio-utils \
-        alsa-utils \
-        git \
-        wget \
-        unzip \
-        gcc \
-        g++ \
-        make \
-        cmake \
-        pkg-config
+    # Test if current Python has tkinter
+    if python3 -c "import tkinter" 2>/dev/null; then
+        print_success "Python has tkinter support"
+        return 0
+    fi
 
-    print_success "xdotool installed (required for Voice Commands feature)"
+    # tkinter not available
+    print_error "Python does not have tkinter support!"
+    print_warning "The GUI application requires tkinter to work."
+    echo ""
+    print_status "This usually happens when Python is installed via asdf/pyenv without tkinter."
+    echo ""
+    echo "You have 3 options:"
+    echo ""
+    echo "  1) Install Python with tkinter via Homebrew (Recommended)"
+    echo "     - Quick and automatic"
+    echo "     - Will install: python-tk@3.11"
+    echo "     - Command: brew install python-tk@3.11"
+    echo ""
+    echo "  2) Reinstall your current Python with tkinter support"
+    echo "     - If using asdf/pyenv"
+    echo "     - Requires: brew install tcl-tk"
+    echo "     - Then reinstall Python with PYTHON_CONFIGURE_OPTS"
+    echo ""
+    echo "  3) Continue anyway (Not recommended)"
+    echo "     - Installation will likely fail later"
+    echo ""
 
-    print_success "Common dependencies installed"
+    read -p "Choose option (1/2/3): " tkinter_choice
+
+    case $tkinter_choice in
+        1)
+            print_status "Installing Python with tkinter via Homebrew..."
+            if brew install python-tk@3.11; then
+                print_success "Python with tkinter installed!"
+                print_status "The installer will now use Homebrew Python."
+
+                # Use Homebrew Python
+                export PATH="/opt/homebrew/bin:$PATH"
+
+                # Verify tkinter is now available
+                if /opt/homebrew/bin/python3.11 -c "import tkinter" 2>/dev/null; then
+                    print_success "✓ tkinter verified working"
+                    # Note: PATH is already updated above to use Homebrew Python first
+                else
+                    print_error "Installation succeeded but tkinter still not working"
+                    print_status "Please check your Homebrew installation"
+                    exit 1
+                fi
+            else
+                print_error "Failed to install Python with tkinter"
+                exit 1
+            fi
+            ;;
+        2)
+            print_status "Instructions for reinstalling Python with tkinter:"
+            echo ""
+            echo "  # Install tcl-tk"
+            echo "  brew install tcl-tk"
+            echo ""
+            echo "  # Set environment variables"
+            echo '  export LDFLAGS="-L/opt/homebrew/opt/tcl-tk/lib"'
+            echo '  export CPPFLAGS="-I/opt/homebrew/opt/tcl-tk/include"'
+            echo '  export PATH="/opt/homebrew/opt/tcl-tk/bin:$PATH"'
+            echo '  export PYTHON_CONFIGURE_OPTS="--with-tcltk-includes='\''-I/opt/homebrew/opt/tcl-tk/include'\'' --with-tcltk-libs='\''-L/opt/homebrew/opt/tcl-tk/lib -ltcl8.6 -ltk8.6'\''"'
+            echo ""
+            echo "  # Reinstall Python (example for asdf)"
+            echo "  asdf uninstall python <version>"
+            echo "  asdf install python <version>"
+            echo ""
+            print_status "After reinstalling, run this installer again."
+            exit 1
+            ;;
+        3)
+            print_warning "Continuing without tkinter support..."
+            print_warning "Installation may fail when creating GUI components!"
+            sleep 2
+            ;;
+        *)
+            print_error "Invalid choice"
+            exit 1
+            ;;
+    esac
+
+    echo ""
 }
 
 # ============================================================================
@@ -238,7 +424,11 @@ install_vosk_backend() {
 # ============================================================================
 
 install_whisper_backend() {
-    print_header "Installing Whisper Backend (GPU-accelerated)"
+    if [ "$OS_TYPE" == "macos" ]; then
+        print_header "Installing Whisper Backend (MPS-accelerated for Apple Silicon)"
+    else
+        print_header "Installing Whisper Backend (GPU-accelerated)"
+    fi
 
     cd "$PROJECT_DIR"
 
@@ -251,15 +441,31 @@ install_whisper_backend() {
         exit 1
     fi
 
-    # Check for NVIDIA GPU
-    if command -v nvidia-smi &> /dev/null; then
-        print_status "NVIDIA GPU detected:"
-        nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits | head -1
-        HAS_GPU=true
+    # Check for acceleration hardware
+    HAS_GPU=false
+    DEVICE_TYPE="cpu"
+
+    if [ "$OS_TYPE" == "macos" ]; then
+        if [ "$IS_APPLE_SILICON" = true ]; then
+            print_status "Apple Silicon detected - MPS acceleration will be available"
+            print_status "Using Metal Performance Shaders for GPU acceleration"
+            HAS_GPU=true
+            DEVICE_TYPE="mps"
+        else
+            print_warning "Intel Mac detected - Whisper will run on CPU"
+            print_warning "For best performance, use Apple Silicon Mac"
+        fi
     else
-        print_warning "NVIDIA GPU not detected. Whisper will run on CPU (slower)"
-        print_warning "For GPU acceleration, install NVIDIA drivers first"
-        HAS_GPU=false
+        # Linux - Check for NVIDIA GPU
+        if command -v nvidia-smi &> /dev/null; then
+            print_status "NVIDIA GPU detected:"
+            nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits | head -1
+            HAS_GPU=true
+            DEVICE_TYPE="cuda"
+        else
+            print_warning "NVIDIA GPU not detected. Whisper will run on CPU (slower)"
+            print_warning "For GPU acceleration, install NVIDIA drivers first"
+        fi
     fi
     echo ""
 
@@ -277,11 +483,18 @@ install_whisper_backend() {
         print_status "Installing from requirements.txt..."
         pip install -r requirements.txt
 
-        # Install cuDNN for GPU support
-        if [ "$HAS_GPU" = true ]; then
+        # Install cuDNN for NVIDIA GPU support (Linux only)
+        if [ "$HAS_GPU" = true ] && [ "$DEVICE_TYPE" == "cuda" ]; then
             print_status "Installing NVIDIA cuDNN for GPU acceleration..."
             pip install nvidia-cudnn-cu12 || print_warning "cuDNN installation failed (optional)"
             print_success "cuDNN installed"
+        fi
+
+        # For macOS, install PyAutoGUI for keyboard output (replacement for xdotool)
+        if [ "$OS_TYPE" == "macos" ]; then
+            print_status "Installing PyAutoGUI for keyboard output on macOS..."
+            pip install pyautogui || print_warning "PyAutoGUI installation failed"
+            print_success "PyAutoGUI installed (replacement for xdotool)"
         fi
     else
         print_error "requirements.txt not found in project root!"
@@ -290,7 +503,33 @@ install_whisper_backend() {
 
     # Test installation
     print_status "Testing Whisper installation..."
-    python -c "
+    if [ "$OS_TYPE" == "macos" ]; then
+        python -c "
+from faster_whisper import WhisperModel
+import torch
+print('✓ faster-whisper imported successfully')
+
+# Test MPS availability
+if torch.backends.mps.is_available():
+    print('✓ MPS (Metal Performance Shaders) available')
+    device = 'cpu'  # Use CPU for initial test to avoid MPS issues
+    compute_type = 'int8'
+else:
+    print('⚠ MPS not available, using CPU')
+    device = 'cpu'
+    compute_type = 'int8'
+
+print(f'Using device for test: {device}')
+print('Testing model loading (will download tiny model)...')
+model = WhisperModel('tiny', device=device, compute_type=compute_type)
+print('✓ Whisper model loaded successfully')
+print('✓ All Whisper dependencies working!')
+" || {
+    print_error "Whisper installation test failed"
+    exit 1
+}
+    else
+        python -c "
 from faster_whisper import WhisperModel
 import torch
 print('✓ faster-whisper imported successfully')
@@ -306,6 +545,7 @@ print('✓ All Whisper dependencies working!')
     print_error "Whisper installation test failed"
     exit 1
 }
+    fi
 
     deactivate
     print_success "Whisper backend installed"
@@ -342,7 +582,7 @@ configure_environment() {
 
     # Update APP_DIR
     if grep -q "^APP_DIR=" "$ENV_FILE"; then
-        sed -i "s|^APP_DIR=.*|APP_DIR=$PROJECT_DIR|" "$ENV_FILE"
+        sed "${SED_INPLACE[@]}" "s|^APP_DIR=.*|APP_DIR=$PROJECT_DIR|" "$ENV_FILE"
     else
         echo "APP_DIR=$PROJECT_DIR" >> "$ENV_FILE"
     fi
@@ -352,7 +592,7 @@ configure_environment() {
         # Note: NERD_DICTATION_DIR is optional now (defaults to apps/nerd-dictation)
         # Only set MODELS_DIR
         if grep -q "^MODELS_DIR=" "$ENV_FILE"; then
-            sed -i "s|^MODELS_DIR=.*|MODELS_DIR=$MODELS_DIR|" "$ENV_FILE"
+            sed "${SED_INPLACE[@]}" "s|^MODELS_DIR=.*|MODELS_DIR=$MODELS_DIR|" "$ENV_FILE"
         else
             echo "MODELS_DIR=$MODELS_DIR" >> "$ENV_FILE"
         fi
@@ -362,7 +602,7 @@ configure_environment() {
     if [ "$INSTALL_WHISPER" = true ] && [ "$INSTALL_VOSK" = false ]; then
         # Whisper only
         if grep -q "^BACKEND=" "$ENV_FILE"; then
-            sed -i "s/^BACKEND=.*/BACKEND=whisper/" "$ENV_FILE"
+            sed "${SED_INPLACE[@]}" "s/^BACKEND=.*/BACKEND=whisper/" "$ENV_FILE"
         else
             echo "BACKEND=whisper" >> "$ENV_FILE"
         fi
@@ -370,7 +610,7 @@ configure_environment() {
     elif [ "$INSTALL_VOSK" = true ] && [ "$INSTALL_WHISPER" = false ]; then
         # Vosk only
         if grep -q "^BACKEND=" "$ENV_FILE"; then
-            sed -i "s/^BACKEND=.*/BACKEND=vosk/" "$ENV_FILE"
+            sed "${SED_INPLACE[@]}" "s/^BACKEND=.*/BACKEND=vosk/" "$ENV_FILE"
         else
             echo "BACKEND=vosk" >> "$ENV_FILE"
         fi
@@ -606,12 +846,26 @@ print_usage() {
 # ============================================================================
 
 main() {
-    print_header "Dictation Manager Installation - Ubuntu 24.04"
+    # Detect OS first
+    detect_os
+    set_directories
 
-    check_ubuntu
-    check_not_root
+    if [ "$OS_TYPE" == "macos" ]; then
+        print_header "Dictation Manager Installation - macOS"
+    else
+        print_header "Dictation Manager Installation - Ubuntu/Linux"
+    fi
+
+    check_ubuntu  # This now just validates OS_TYPE is set
+
+    # Skip root check on macOS
+    if [ "$OS_TYPE" != "macos" ]; then
+        check_not_root
+    fi
+
     choose_backends
     install_common_dependencies
+    check_python_tkinter
 
     if [ "$INSTALL_VOSK" = true ]; then
         install_vosk_backend

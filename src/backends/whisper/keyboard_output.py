@@ -1,16 +1,34 @@
 """
 Keyboard output module for typing transcribed text.
 
-Uses xdotool to type text directly into any application,
-mimicking nerd-dictation's behavior.
+Uses xdotool on Linux or PyAutoGUI on macOS to type text directly
+into any application, mimicking nerd-dictation's behavior.
 """
 
 import subprocess
 import threading
 from typing import Optional, Callable
 import queue
+import platform
 
 from src.core.logging_controller import info, debug, warning, error, critical
+
+# Detect platform
+IS_MACOS = platform.system() == "Darwin"
+IS_LINUX = platform.system() == "Linux"
+
+# Try to import PyAutoGUI for macOS
+if IS_MACOS:
+    try:
+        import pyautogui
+        PYAUTOGUI_AVAILABLE = True
+        # Configure PyAutoGUI
+        pyautogui.FAILSAFE = False  # Disable failsafe for dictation use
+    except ImportError:
+        PYAUTOGUI_AVAILABLE = False
+        warning("PyAutoGUI not available - install with: pip install pyautogui")
+else:
+    PYAUTOGUI_AVAILABLE = False
 
 
 class KeyboardOutput:
@@ -36,19 +54,33 @@ class KeyboardOutput:
         self.typing_delay = typing_delay
         self.clear_modifiers = clear_modifiers
         self.on_error = on_error
+        self.use_pyautogui = False
+        self.xdotool_available = False
 
-        # Check if xdotool is available
-        try:
-            subprocess.run(['xdotool', '--version'],
-                          capture_output=True, check=True)
-            self.xdotool_available = True
-            info("xdotool found and working")
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            self.xdotool_available = False
-            error_msg = "xdotool not found. Install with: sudo apt install xdotool"
-            error(error_msg)
-            if on_error:
-                on_error(error_msg)
+        # Determine which backend to use
+        if IS_MACOS:
+            # macOS - use PyAutoGUI
+            if PYAUTOGUI_AVAILABLE:
+                self.use_pyautogui = True
+                self.xdotool_available = True  # Treat as "available" for compatibility
+                info("Using PyAutoGUI for keyboard output on macOS")
+            else:
+                error_msg = "PyAutoGUI not found. Install with: pip install pyautogui"
+                error(error_msg)
+                if on_error:
+                    on_error(error_msg)
+        else:
+            # Linux - use xdotool
+            try:
+                subprocess.run(['xdotool', '--version'],
+                              capture_output=True, check=True)
+                self.xdotool_available = True
+                info("xdotool found and working")
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                error_msg = "xdotool not found. Install with: sudo apt install xdotool"
+                error(error_msg)
+                if on_error:
+                    on_error(error_msg)
 
         self.output_queue = queue.Queue()
         self.is_running = False
@@ -198,17 +230,23 @@ class KeyboardOutput:
             return
 
         try:
-            # Send BackSpace keys (like nerd-dictation does)
-            cmd = ['xdotool', 'key', '--'] + ['BackSpace'] * count
-            result = subprocess.run(cmd, capture_output=True, text=True)
-
-            if result.returncode != 0:
-                error_msg = f"xdotool delete failed: {result.stderr}"
-                error(error_msg)
-                if self.on_error:
-                    self.on_error(error_msg)
+            if self.use_pyautogui:
+                # macOS - use PyAutoGUI
+                for _ in range(count):
+                    pyautogui.press('backspace')
+                debug(f"Deleted {count} characters (PyAutoGUI)")
             else:
-                debug(f"Deleted {count} characters")
+                # Linux - use xdotool
+                cmd = ['xdotool', 'key', '--'] + ['BackSpace'] * count
+                result = subprocess.run(cmd, capture_output=True, text=True)
+
+                if result.returncode != 0:
+                    error_msg = f"xdotool delete failed: {result.stderr}"
+                    error(error_msg)
+                    if self.on_error:
+                        self.on_error(error_msg)
+                else:
+                    debug(f"Deleted {count} characters")
 
         except Exception as e:
             error_msg = f"Failed to delete characters: {e}"
@@ -218,7 +256,7 @@ class KeyboardOutput:
 
     def _type_text_immediate(self, text: str):
         """
-        Type text immediately using xdotool.
+        Type text immediately using xdotool (Linux) or PyAutoGUI (macOS).
 
         Args:
             text: Text to type
@@ -231,20 +269,26 @@ class KeyboardOutput:
             if self.clear_modifiers:
                 self._clear_modifiers()
 
-            # Use xdotool to type the text
-            # --clearmodifiers ensures no modifier keys interfere
-            # -- prevents xdotool from interpreting options in the text
-            cmd = ['xdotool', 'type', '--clearmodifiers', '--', text]
-
-            result = subprocess.run(cmd, capture_output=True, text=True)
-
-            if result.returncode != 0:
-                error_msg = f"xdotool failed: {result.stderr}"
-                error(error_msg)
-                if self.on_error:
-                    self.on_error(error_msg)
+            if self.use_pyautogui:
+                # macOS - use PyAutoGUI
+                # PyAutoGUI types slower by default which is actually better for reliability
+                pyautogui.write(text, interval=self.typing_delay)
+                debug(f"Typed text (PyAutoGUI): '{text}'")
             else:
-                debug(f"Typed text: '{text}'")
+                # Linux - use xdotool
+                # --clearmodifiers ensures no modifier keys interfere
+                # -- prevents xdotool from interpreting options in the text
+                cmd = ['xdotool', 'type', '--clearmodifiers', '--', text]
+
+                result = subprocess.run(cmd, capture_output=True, text=True)
+
+                if result.returncode != 0:
+                    error_msg = f"xdotool failed: {result.stderr}"
+                    error(error_msg)
+                    if self.on_error:
+                        self.on_error(error_msg)
+                else:
+                    debug(f"Typed text: '{text}'")
 
         except Exception as e:
             error_msg = f"Failed to type text: {e}"
@@ -255,11 +299,16 @@ class KeyboardOutput:
     def _clear_modifiers(self):
         """Clear any held modifier keys."""
         try:
-            # Release common modifier keys
-            modifiers = ['Shift', 'Control', 'Alt', 'Super', 'Meta']
-            for modifier in modifiers:
-                subprocess.run(['xdotool', 'keyup', modifier],
-                             capture_output=True, check=False)
+            if self.use_pyautogui:
+                # PyAutoGUI doesn't need explicit modifier clearing
+                # It handles this automatically
+                pass
+            else:
+                # Linux - use xdotool
+                modifiers = ['Shift', 'Control', 'Alt', 'Super', 'Meta']
+                for modifier in modifiers:
+                    subprocess.run(['xdotool', 'keyup', modifier],
+                                 capture_output=True, check=False)
         except Exception as e:
             warning(f"Failed to clear modifiers: {e}")
 
@@ -285,15 +334,29 @@ class KeyboardOutput:
 
         Args:
             key: Key name (e.g., 'Return', 'Space', 'BackSpace')
+                 For PyAutoGUI: 'enter', 'space', 'backspace' (lowercase)
         """
         if not self.xdotool_available:
-            error("Cannot press key: xdotool not available")
+            error("Cannot press key: keyboard output not available")
             return
 
         try:
-            subprocess.run(['xdotool', 'key', key],
-                          capture_output=True, check=True)
-            debug(f"Pressed key: {key}")
+            if self.use_pyautogui:
+                # Convert xdotool key names to PyAutoGUI key names
+                key_map = {
+                    'Return': 'enter',
+                    'Space': 'space',
+                    'BackSpace': 'backspace',
+                    'Tab': 'tab',
+                    'Escape': 'esc',
+                }
+                pyautogui_key = key_map.get(key, key.lower())
+                pyautogui.press(pyautogui_key)
+                debug(f"Pressed key (PyAutoGUI): {pyautogui_key}")
+            else:
+                subprocess.run(['xdotool', 'key', key],
+                              capture_output=True, check=True)
+                debug(f"Pressed key: {key}")
         except Exception as e:
             error(f"Failed to press key {key}: {e}")
             if self.on_error:
@@ -319,24 +382,37 @@ class KeyboardOutput:
         status = {
             'xdotool': False,
             'display': False,
+            'pyautogui': False,
+            'platform': platform.system(),
             'error': None
         }
 
-        # Check xdotool
-        try:
-            subprocess.run(['xdotool', '--version'],
-                          capture_output=True, check=True)
-            status['xdotool'] = True
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            status['error'] = "xdotool not found. Install with: sudo apt install xdotool"
+        if IS_MACOS:
+            # macOS - check PyAutoGUI
+            status['pyautogui'] = PYAUTOGUI_AVAILABLE
+            status['display'] = True  # macOS always has display
 
-        # Check display
-        try:
-            subprocess.run(['xdpyinfo'], capture_output=True, check=True)
-            status['display'] = True
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            if not status['error']:
-                status['error'] = "No display available or xdpyinfo not installed"
+            if not PYAUTOGUI_AVAILABLE:
+                status['error'] = "PyAutoGUI not found. Install with: pip install pyautogui"
+                status['error'] += "\nNote: You'll need to grant Accessibility permissions in System Preferences"
+            else:
+                status['xdotool'] = True  # Mark as available for compatibility
+        else:
+            # Linux - check xdotool
+            try:
+                subprocess.run(['xdotool', '--version'],
+                              capture_output=True, check=True)
+                status['xdotool'] = True
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                status['error'] = "xdotool not found. Install with: sudo apt install xdotool"
+
+            # Check display
+            try:
+                subprocess.run(['xdpyinfo'], capture_output=True, check=True)
+                status['display'] = True
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                if not status['error']:
+                    status['error'] = "No display available or xdpyinfo not installed"
 
         return status
 

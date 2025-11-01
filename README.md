@@ -2,100 +2,120 @@
 
 A Python GUI application for voice dictation with support for multiple backends (Vosk via integrated [nerd-dictation](https://github.com/ideasman42/nerd-dictation), and Whisper) with support for multiple languages.
 
+**Now with macOS (Apple Silicon) support!** 🎉
+
 ## Features
 
 - **Intuitive GUI**: Easy voice dictation control with Tkinter
 - **Multi-language support**: Spanish and English with quick language switching
 - **Model management**: Selection and switching between different Vosk models
 - **Session tracking**: Automatic logging of all dictation sessions in SQLite
-- **No external dependencies**: Uses only Python standard library
+- **Cross-platform**: Works on Ubuntu/Linux and macOS (Apple Silicon)
 - **Auto-refresh**: Status updates every 2 seconds
 - **Silent operation**: No popup dialogs, seamless workflow
+- **Hardware acceleration**: CUDA (NVIDIA) on Linux, optimized CPU on macOS
 
 ## System Requirements
 
-- **OS**: Ubuntu 24.04 (or similar)
-- **Python**: 3.11+
+### Ubuntu/Linux
+
+- **OS**: Ubuntu 24.04 (or similar Linux distribution)
+- **Python**: 3.8+
+- **GPU**: NVIDIA GPU with CUDA support (recommended for Whisper)
 - **System packages**:
   ```bash
-  sudo apt install python3-tk pulseaudio-utils
+  sudo apt install python3-tk python3-pip python3-venv portaudio19-dev xdotool
   ```
-- **nerd-dictation**: Installed with its own virtual environment
-- **Vosk models**: At least one model downloaded
+
+### macOS (Apple Silicon)
+
+- **OS**: macOS (tested on Apple Silicon M1/M2)
+- **Python**: 3.8+
+- **Homebrew**: Required for dependencies
+- **System packages**:
+  ```bash
+  brew install portaudio cmake pkg-config
+  ```
+- **Important**: You'll need to grant **Accessibility permissions** to your Terminal app in:
+  - System Preferences → Privacy & Security → Accessibility
 
 ## Installation
 
-### 1. Clone or download the project
+The installation process is now **fully automated** and detects your operating system automatically!
 
-```bash
-cd /home/tho/soft/ai/
-git clone <repository-url> dictation
-cd dictation
-```
+### Quick Start (Automated Installation)
 
-### 2. Configure paths
+#### On macOS:
 
-Copy the example file and adjust paths for your system:
+1. **Install Homebrew** (if not already installed):
+   ```bash
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+   ```
 
-```bash
-cp .env.example .env
-```
+2. **Clone and install**:
+   ```bash
+   git clone <repository-url> nerd-gui
+   cd nerd-gui
+   chmod +x install.sh
+   ./install.sh
+   ```
 
-Edit `.env` with your specific paths:
+3. **Grant Accessibility permissions**:
+   - Open System Preferences → Privacy & Security → Accessibility
+   - Add Terminal (or your terminal app) to the list
+   - This allows the app to type dictated text
 
-```bash
-APP_DIR=/home/tho/soft/ai/dictation
-NERD_DICTATION_DIR=/home/tho/app_folder/nerd-dictation  # Optional, uses apps/nerd-dictation by default
-MODELS_DIR=/home/tho/.config/nerd-dictation
-```
+4. **Run the application**:
+   ```bash
+   ./run.sh
+   ```
 
-**Note**: `NERD_DICTATION_DIR` is optional. The application includes an integrated copy of nerd-dictation at `apps/nerd-dictation/`. If you have a custom installation, you can specify it here.
+#### On Ubuntu/Linux:
 
-### 3. Download Vosk models
+1. **Clone and install**:
+   ```bash
+   git clone <repository-url> nerd-gui
+   cd nerd-gui
+   chmod +x install.sh
+   ./install.sh
+   ```
 
-Download models from [alphacephei.com/vosk/models](https://alphacephei.com/vosk/models/) and place them in your models directory (defined in `.env`):
+2. **Run the application**:
+   ```bash
+   ./run.sh
+   ```
+   Or search for "Dictation Manager" in your applications menu.
 
-```bash
-# Example: recommended models
-# Spanish
-wget https://alphacephei.com/vosk/models/vosk-model-es-0.42.zip
-unzip vosk-model-es-0.42.zip -d ~/.config/nerd-dictation/
+### What the installer does:
 
-# English
-wget https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip
-unzip vosk-model-en-us-0.22.zip -d ~/.config/nerd-dictation/
-```
+The `install.sh` script will:
+- ✅ Detect your operating system (macOS or Ubuntu/Linux)
+- ✅ Check for required dependencies (Homebrew on Mac, apt on Ubuntu)
+- ✅ Prompt you to choose backends (Vosk, Whisper, or both)
+- ✅ Install all necessary system packages
+- ✅ Create virtual environments
+- ✅ Install Python dependencies
+- ✅ Configure paths automatically
+- ✅ On macOS: Install PyAutoGUI for keyboard output
+- ✅ On Linux: Install xdotool and configure desktop entry
 
-### 4. Install nerd-dictation (Vosk backend)
+### Platform-Specific Notes
 
-The repository includes nerd-dictation at `apps/nerd-dictation/`. You need to set up its virtual environment:
+#### macOS (Apple Silicon)
 
-```bash
-cd /home/tho/soft/ai/dictation/apps/nerd-dictation
-python3 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-pip install .
-deactivate
-```
+- **Keyboard Output**: Uses PyAutoGUI instead of xdotool
+  - Requires Accessibility permissions (System Preferences → Privacy & Security)
+- **GPU Acceleration**: Uses CPU with int8 quantization (optimized for Apple Silicon)
+  - faster-whisper doesn't support MPS directly yet, but CPU performance is excellent on M1/M2
+- **Models Directory**: `~/Library/Application Support/nerd-dictation`
+- **Performance**: Apple Silicon CPUs are very fast for inference, expect good performance even without GPU
 
-**Note**: If you prefer to use a separate nerd-dictation installation, clone it elsewhere and specify the path in `.env` via `NERD_DICTATION_DIR`.
+#### Ubuntu/Linux (NVIDIA GPU)
 
-### 5. Install Whisper backend (optional, GPU recommended)
-
-For the Whisper backend with GPU acceleration:
-
-```bash
-cd /home/tho/soft/ai/dictation
-python3 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-# For GPU support (requires NVIDIA CUDA)
-pip install nvidia-cudnn-cu12
-deactivate
-```
+- **Keyboard Output**: Uses xdotool (X11 required)
+- **GPU Acceleration**: CUDA with float16 precision
+- **Models Directory**: `~/.config/nerd-dictation`
+- **Desktop Integration**: Creates `.desktop` file for application menu
 
 ## Usage
 

@@ -430,6 +430,9 @@ class MainWindow:
                     if info['maxInputChannels'] > 0:
                         # Format: "index: Device Name"
                         device_name = info['name']
+                        # macOS returns bytes instead of str, convert if needed
+                        if isinstance(device_name, bytes):
+                            device_name = device_name.decode('utf-8', errors='replace')
                         devices.append(f"{i}: {device_name}")
                 except Exception:
                     continue  # Skip problematic devices

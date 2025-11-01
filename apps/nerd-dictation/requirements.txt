@@ -2,7 +2,7 @@
 # Python 3.8+ required
 
 # Voice recognition
-vosk>=0.3.45
+vosk>=0.3.42
 
 # Audio capture
 sounddevice>=0.4.6

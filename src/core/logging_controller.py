@@ -51,13 +51,36 @@ class ALSASuppressor:
 
     def write(self, data):
         """Override write method to filter ALSA messages"""
-        if any(pattern in data for pattern in self.suppressed_patterns):
-            # Suppress ALSA messages
-            return
+        try:
+            # Convert bytes to string if needed (macOS compatibility)
+            if isinstance(data, bytes):
+                data = data.decode('utf-8', errors='replace')
+
+            # Ensure data is a string
+            if not isinstance(data, str):
+                data = str(data)
+
+            if any(pattern in data for pattern in self.suppressed_patterns):
+                # Suppress ALSA messages
+                return
+        except Exception:
+            # If filtering fails, pass through anyway to avoid losing stderr
+            pass
+
         # Pass through other messages
         if self.original_stderr:
-            self.original_stderr.write(data)
-            self.original_stderr.flush()
+            try:
+                if isinstance(data, bytes):
+                    data = data.decode('utf-8', errors='replace')
+                self.original_stderr.write(data)
+                self.original_stderr.flush()
+            except Exception:
+                # Last resort: try to write anything
+                try:
+                    self.original_stderr.write(str(data))
+                    self.original_stderr.flush()
+                except:
+                    pass  # Give up gracefully
 
     def flush(self):
         """Override flush method"""

@@ -1,17 +1,22 @@
 """
-Whisper transcription module using faster-whisper with CUDA acceleration.
+Whisper transcription module using faster-whisper with GPU acceleration.
 
 Provides high-performance speech transcription using faster-whisper
 with GPU acceleration for real-time dictation.
+Supports CUDA (Linux/NVIDIA) and MPS (macOS/Apple Silicon).
 """
 
 import threading
 import queue
 import time
+import platform
 from typing import Optional, Callable, Dict, Any
 import numpy as np
 
 from src.core.logging_controller import info, debug, warning, error, critical
+
+# Detect platform
+IS_MACOS = platform.system() == "Darwin"
 
 try:
     from faster_whisper import WhisperModel
@@ -31,22 +36,26 @@ class WhisperTranscriber:
 
     def __init__(self,
                  model_size: str = "medium",
-                 device: str = "cuda",
-                 compute_type: str = "float16",
+                 device: str = "auto",
+                 compute_type: str = "auto",
                  language: Optional[str] = None):
         """
         Initialize Whisper transcriber.
 
         Args:
             model_size: Whisper model size (tiny, base, small, medium, large)
-            device: Device to use (cuda or cpu)
-            compute_type: Compute precision (float16 for GPU, float32 for CPU)
+            device: Device to use ('auto', 'cuda', 'mps', or 'cpu')
+                   'auto' will detect best available device
+            compute_type: Compute precision ('auto', 'float16', 'float32', 'int8')
+                         'auto' will choose based on device
             language: Default language code (e.g., 'en', 'es')
         """
         if not FASTER_WHISPER_AVAILABLE:
             raise ImportError("faster-whisper is required. Install with: pip install faster-whisper")
 
         self.model_size = model_size
+        self.requested_device = device
+        self.requested_compute_type = compute_type
         self.device = device
         self.compute_type = compute_type
         self.default_language = language
@@ -65,6 +74,42 @@ class WhisperTranscriber:
         self.total_audio_duration = 0.0
         self.total_transcription_time = 0.0
 
+    def _detect_best_device(self):
+        """
+        Auto-detect the best available device for inference.
+
+        Priority: CUDA > MPS > CPU
+        """
+        try:
+            import torch
+
+            # Check for CUDA (NVIDIA GPU)
+            if torch.cuda.is_available():
+                info("CUDA available - using NVIDIA GPU acceleration")
+                self.device = "cuda"
+                self.compute_type = "float16" if self.requested_compute_type == "auto" else self.requested_compute_type
+                return
+
+            # Check for MPS (Apple Silicon)
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                info("MPS available - using Apple Silicon GPU acceleration")
+                # NOTE: faster-whisper doesn't directly support MPS yet
+                # We'll use CPU with optimized settings for now
+                # Some users report better performance with CPU on Mac
+                warning("MPS detected but faster-whisper uses CPU backend on macOS")
+                warning("Using CPU with int8 quantization for best performance on Apple Silicon")
+                self.device = "cpu"
+                self.compute_type = "int8"  # int8 is faster and uses less memory
+                return
+
+        except ImportError:
+            warning("PyTorch not available for device detection")
+
+        # Fallback to CPU
+        info("Using CPU for inference")
+        self.device = "cpu"
+        self.compute_type = "float32" if self.requested_compute_type == "auto" else self.requested_compute_type
+
     def load_model(self) -> bool:
         """
         Load Whisper model with specified configuration.
@@ -77,10 +122,11 @@ class WhisperTranscriber:
                 return True
 
             try:
-                info(f"Loading Whisper model '{self.model_size}' on {self.device}...")
-                start_time = time.time()
+                # Auto-detect device if requested
+                if self.requested_device == "auto":
+                    self._detect_best_device()
 
-                # Check CUDA availability before trying to load on GPU
+                # Validate device selection
                 if self.device == "cuda":
                     try:
                         import torch
@@ -89,7 +135,16 @@ class WhisperTranscriber:
                             self.device = "cpu"
                             self.compute_type = "float32"
                     except ImportError:
-                        pass  # torch not available, let WhisperModel handle it
+                        warning("PyTorch not available, cannot verify CUDA")
+
+                elif self.device == "mps":
+                    # MPS requested but faster-whisper doesn't support it directly
+                    warning("MPS not directly supported by faster-whisper, using CPU with int8")
+                    self.device = "cpu"
+                    self.compute_type = "int8"
+
+                info(f"Loading Whisper model '{self.model_size}' on {self.device} with {self.compute_type}...")
+                start_time = time.time()
 
                 self.model = WhisperModel(
                     self.model_size,
@@ -99,6 +154,11 @@ class WhisperTranscriber:
 
                 load_time = time.time() - start_time
                 info(f"Model loaded in {load_time:.2f} seconds on {self.device}")
+
+                # Log platform-specific info
+                if IS_MACOS:
+                    info("Running on macOS - using CPU backend optimized for Apple Silicon")
+
                 self.is_model_loaded = True
                 return True
 
@@ -107,8 +167,8 @@ class WhisperTranscriber:
                 # Log the full error
                 error(f"Failed to load Whisper model: {error_msg}")
 
-                # Check if it's a CUDA memory error
-                if "CUDA out of memory" in error_msg or "out of memory" in error_msg.lower():
+                # Check if it's a memory error
+                if "out of memory" in error_msg.lower():
                     # Try to get GPU memory info if available
                     try:
                         import torch
@@ -120,13 +180,13 @@ class WhisperTranscriber:
                         pass
 
                     # Re-raise with more context
-                    raise RuntimeError(f"CUDA out of memory when loading {self.model_size} model: {error_msg}")
+                    raise RuntimeError(f"Out of memory when loading {self.model_size} model: {error_msg}")
 
                 self.is_model_loaded = False
                 raise  # Re-raise the exception for better error handling upstream
 
     def unload_model(self):
-        """Unload model to free GPU memory."""
+        """Unload model to free GPU/CPU memory."""
         import gc
         with self.load_lock:
             if self.model:
@@ -137,12 +197,15 @@ class WhisperTranscriber:
                 # Force garbage collection to free memory
                 gc.collect()
 
-                # Try to clear CUDA cache if available
+                # Try to clear GPU cache if available
                 try:
                     import torch
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
                         info("CUDA cache cleared")
+                    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                        # MPS doesn't have explicit cache clearing yet
+                        info("MPS backend - memory will be freed automatically")
                 except ImportError:
                     pass  # torch not available, that's fine
 

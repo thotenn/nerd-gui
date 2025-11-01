@@ -27,7 +27,12 @@ def test_microphone():
     for i in range(p.get_device_count()):
         info = p.get_device_info_by_index(i)
         if info['maxInputChannels'] > 0:
-            print(f"  [{i}] {info['name']}")
+            # Convert bytes to string if needed (macOS compatibility)
+            device_name = info['name']
+            if isinstance(device_name, bytes):
+                device_name = device_name.decode('utf-8', errors='replace')
+
+            print(f"  [{i}] {device_name}")
             print(f"      Channels: {info['maxInputChannels']}")
             print(f"      Sample Rate: {int(info['defaultSampleRate'])}Hz")
 
